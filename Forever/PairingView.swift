@@ -8,20 +8,44 @@ struct PairingView: View {
     @State private var isLinking = false
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Pair with your partner")
-                .font(.title2.weight(.semibold))
-            Text("Ask them for their 6-digit code.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+        VStack(spacing: 24) {
 
-            TextField("Code", text: $code)
-                .textContentType(.oneTimeCode)
-                .keyboardType(.numberPad)
-                .textInputAutocapitalization(.never)
-                .padding()
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+            // 1. THIS IS THE NEW PART: Display the user's own code
+            if let myCode = state.currentUser?.pairingCode {
+                VStack(spacing: 8) {
+                    Text("Your Invite Code")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+
+                    Text(myCode)
+                        .font(.system(size: 44, weight: .black, design: .monospaced))
+                        .tracking(4)
+                        .padding(.vertical, 16)
+                        .padding(.horizontal, 24)
+                        .background(.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+                        .foregroundStyle(.blue)
+                }
+                .padding(.bottom, 20)
+            }
+
+            Divider()
+                .padding(.horizontal, 40)
+
+            // 2. The Input Field (Cursor's original code)
+            VStack(spacing: 12) {
+                Text("Enter Partner's Code")
+                    .font(.headline)
+
+                TextField("6-Digit Code", text: $code)
+                    .textContentType(.oneTimeCode)
+                    .keyboardType(.default) // Changed from numberPad to default since codes have letters
+                    .textInputAutocapitalization(.characters)
+                    .multilineTextAlignment(.center)
+                    .font(.title2.weight(.bold))
+                    .padding()
+                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+            }
 
             if let errorMessage {
                 Text(errorMessage)
@@ -37,13 +61,15 @@ struct PairingView: View {
                 if isLinking {
                     ProgressView()
                 } else {
-                    Text("Pair")
+                    Text("Link Phones")
+                        .frame(maxWidth: .infinity)
                 }
             }
             .buttonStyle(.borderedProminent)
-            .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLinking)
+            .controlSize(.large)
+            .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).count < 6 || isLinking)
         }
-        .padding()
+        .padding(30)
     }
 
     private func link() async {
@@ -56,9 +82,4 @@ struct PairingView: View {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
-}
-
-#Preview {
-    PairingView()
-        .environment(AppStateManager())
 }

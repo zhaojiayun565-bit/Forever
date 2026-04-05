@@ -1,6 +1,8 @@
 import SwiftUI
 import WidgetKit
 
+// MARK: - Timeline
+
 struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> SimpleEntry {
         SimpleEntry(date: Date(), distance: 456.0, batteryLevel: 85)
@@ -30,6 +32,8 @@ struct SimpleEntry: TimelineEntry {
     let distance: Double
     let batteryLevel: Int
 }
+
+// MARK: - View
 
 struct CoupleWidgetEntryView: View {
     var entry: Provider.Entry
@@ -62,7 +66,6 @@ struct CoupleWidgetEntryView: View {
                 .foregroundColor(.white.opacity(0.8))
                 .textCase(.uppercase)
         }
-        // iOS 17 requires containerBackground for widgets
         .containerBackground(for: .widget) {
             LinearGradient(
                 colors: [Color.pink.opacity(0.5), Color.purple.opacity(0.8)],
@@ -72,13 +75,15 @@ struct CoupleWidgetEntryView: View {
         }
     }
 
-    func batteryIcon(for level: Int) -> String {
+    private func batteryIcon(for level: Int) -> String {
         if level > 80 { return "battery.100" }
         if level > 50 { return "battery.75" }
         if level > 20 { return "battery.50" }
         return "battery.25"
     }
 }
+
+// MARK: - Widget
 
 @main
 struct CoupleWidget: Widget {

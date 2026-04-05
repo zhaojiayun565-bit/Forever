@@ -6,18 +6,20 @@ import Foundation
 struct Profile: Codable, Identifiable, Hashable {
     let id: UUID
     var pairingCode: String?
-    let createdAt: Date
     var latitude: Double?
     var longitude: Double?
     var batteryLevel: Int?
+    var latestNoteUrl: String?
+    let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
         case id
         case pairingCode = "pairing_code"
-        case createdAt = "created_at"
         case latitude
         case longitude
         case batteryLevel = "battery_level"
+        case latestNoteUrl = "latest_note_url"
+        case createdAt = "created_at"
     }
 }
 
@@ -44,10 +46,11 @@ extension Profile {
     static let mock = Profile(
         id: UUID(),
         pairingCode: "XJ92KL",
-        createdAt: Date(),
         latitude: 37.3349,
         longitude: -122.0090,
-        batteryLevel: 85
+        batteryLevel: 85,
+        latestNoteUrl: nil,
+        createdAt: Date()
     )
 }
 

@@ -16,7 +16,16 @@ struct ContentView: View {
             case (true, _):
                 ProgressView()
             case (false, true):
-                Text("Main Dashboard")
+                VStack(spacing: 20) {
+                    Text("Main Dashboard")
+                        .font(.largeTitle.bold())
+                    
+                    Button("Draw a Note for Partner") {
+                        // You can make this open a sheet
+                    }
+                    // Alternatively, just put DrawingView() here directly to test it!
+                    DrawingView()
+                }
             case (false, false):
                 PairingView()
             }

@@ -2,6 +2,7 @@ import CoreLocation
 import Foundation
 import Observation
 import WidgetKit
+import Supabase
 
 /// App-wide session, profile, and pairing state.
 @MainActor
@@ -94,6 +95,13 @@ final class AppStateManager {
             let distanceInMiles = distanceInMeters / 1609.344
 
             defaults.set(distanceInMiles, forKey: "partnerDistance")
+        }
+
+        // 3. Sync Note URL
+        if let noteUrl = partner.latestNoteUrl {
+            defaults.set(noteUrl, forKey: "partnerNoteUrl")
+        } else {
+            defaults.removeObject(forKey: "partnerNoteUrl")
         }
 
         // 3. Force the widget to instantly refresh

@@ -113,6 +113,31 @@ final class SupabaseManager {
             .eq("id", value: session.user.id)
             .execute()
     }
+
+    func uploadNoteImage(data: Data) async throws -> String {
+        let path = "\(UUID().uuidString).png"
+
+        try await client.storage
+            .from("notes")
+            .upload(
+                path,
+                data: data,
+                options: FileOptions(contentType: "image/png")
+            )
+
+        let publicUrl = try client.storage.from("notes").getPublicUrl(path: path)
+        return publicUrl.absoluteString
+    }
+
+    func updateLatestNoteUrl(url: String) async throws {
+        let session = try await client.auth.session
+        let myId = session.user.id
+
+        try await client.from("profiles")
+            .update(NoteUpdateDTO(latest_note_url: url))
+            .eq("id", value: myId)
+            .execute()
+    }
 }
 
 // MARK: - DTOs (Data Transfer Objects)
@@ -136,4 +161,8 @@ private nonisolated struct AmbientDataUpdate: Encodable, Sendable {
     let latitude: Double
     let longitude: Double
     let battery_level: Int
+}
+
+private nonisolated struct NoteUpdateDTO: Encodable, Sendable {
+    let latest_note_url: String
 }

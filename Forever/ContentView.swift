@@ -8,17 +8,26 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(AppStateManager.self) private var state
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        Group {
+            switch (state.isLoading, state.currentCouple != nil) {
+            case (true, _):
+                ProgressView()
+            case (false, true):
+                Text("Main Dashboard")
+            case (false, false):
+                PairingView()
+            }
         }
-        .padding()
+        .task {
+            await state.initializeApp()
+        }
     }
 }
 
 #Preview {
     ContentView()
+        .environment(AppStateManager())
 }

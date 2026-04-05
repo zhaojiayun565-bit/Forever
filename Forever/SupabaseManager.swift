@@ -107,16 +107,16 @@ final class SupabaseManager {
 // MARK: - DTOs (Data Transfer Objects)
 // Moving these here and adding Sendable fixes the Swift 6 concurrency errors.
 
-private struct NewProfileInsert: Encodable, Sendable {
+private nonisolated struct NewProfileInsert: Encodable, Sendable {
     let id: UUID
     let pairing_code: String
 }
 
-private struct FindPartnerParams: Encodable, Sendable {
+private nonisolated struct FindPartnerParams: Encodable, Sendable {
     let p_code: String
 }
 
-private struct NewCoupleInsert: Encodable, Sendable {
+private nonisolated struct NewCoupleInsert: Encodable, Sendable {
     let user1_id: UUID
     let user2_id: UUID
 }

@@ -53,12 +53,8 @@ final class SupabaseManager {
     /// Inserts a profile for the current user with the given pairing code.
     func createProfile(code: String) async throws {
         let session = try await client.auth.session
-        struct NewProfile: Encodable {
-            let id: UUID
-            let pairing_code: String
-        }
         try await client.from("profiles")
-            .insert(NewProfile(id: session.user.id, pairing_code: code))
+            .insert(NewProfileInsert(id: session.user.id, pairing_code: code))
             .execute()
     }
 
@@ -89,29 +85,38 @@ final class SupabaseManager {
         let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw PairingError.emptyCode }
 
-        struct Params: Encodable {
-            let p_code: String
-        }
         let partnerId: UUID? = try await client.rpc(
             "find_partner_by_pairing_code",
-            params: Params(p_code: trimmed)
+            params: FindPartnerParams(p_code: trimmed)
         )
         .execute()
         .value
 
         guard let partnerId else { throw PairingError.partnerNotFound }
 
-        struct NewCouple: Encodable {
-            let user1_id: UUID
-            let user2_id: UUID
-        }
-
         let inserted: Couple = try await client.from("couples")
-            .insert(NewCouple(user1_id: selfId, user2_id: partnerId))
+            .insert(NewCoupleInsert(user1_id: selfId, user2_id: partnerId))
             .select()
             .single()
             .execute()
             .value
         return inserted
     }
+}
+
+// MARK: - DTOs (Data Transfer Objects)
+// Moving these here and adding Sendable fixes the Swift 6 concurrency errors.
+
+private struct NewProfileInsert: Encodable, Sendable {
+    let id: UUID
+    let pairing_code: String
+}
+
+private struct FindPartnerParams: Encodable, Sendable {
+    let p_code: String
+}
+
+private struct NewCoupleInsert: Encodable, Sendable {
+    let user1_id: UUID
+    let user2_id: UUID
 }

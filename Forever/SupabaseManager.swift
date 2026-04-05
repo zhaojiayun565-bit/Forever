@@ -15,6 +15,8 @@ enum PairingError: LocalizedError {
 
 /// Wraps `SupabaseClient` for auth and table access.
 final class SupabaseManager {
+    static let shared = SupabaseManager()
+
     let client: SupabaseClient
 
     init(
@@ -102,6 +104,15 @@ final class SupabaseManager {
             .value
         return inserted
     }
+
+    /// Writes latest location and battery snapshot for the signed-in user.
+    func updateAmbientData(latitude: Double, longitude: Double, batteryLevel: Int) async throws {
+        let session = try await client.auth.session
+        try await client.from("profiles")
+            .update(AmbientDataUpdate(latitude: latitude, longitude: longitude, battery_level: batteryLevel))
+            .eq("id", value: session.user.id)
+            .execute()
+    }
 }
 
 // MARK: - DTOs (Data Transfer Objects)
@@ -119,4 +130,10 @@ private nonisolated struct FindPartnerParams: Encodable, Sendable {
 private nonisolated struct NewCoupleInsert: Encodable, Sendable {
     let user1_id: UUID
     let user2_id: UUID
+}
+
+private nonisolated struct AmbientDataUpdate: Encodable, Sendable {
+    let latitude: Double
+    let longitude: Double
+    let battery_level: Int
 }

@@ -11,7 +11,7 @@ final class AppStateManager {
     var currentCouple: Couple?
     var isLoading = true
 
-    init(supabase: SupabaseManager = SupabaseManager()) {
+    init(supabase: SupabaseManager = .shared) {
         self.supabase = supabase
     }
 

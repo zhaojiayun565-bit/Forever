@@ -1,5 +1,7 @@
+import CoreLocation
 import Foundation
 import Observation
+import WidgetKit
 
 /// App-wide session, profile, and pairing state.
 @MainActor
@@ -9,6 +11,7 @@ final class AppStateManager {
 
     var currentUser: Profile?
     var currentCouple: Couple?
+    var partnerProfile: Profile?
     var isLoading = true
 
     init(supabase: SupabaseManager = .shared) {
@@ -34,6 +37,7 @@ final class AppStateManager {
 
             currentUser = profile
             currentCouple = try await supabase.fetchCurrentCouple()
+            await loadPartnerProfile()
             print("✅ SUCCESS: Profile loaded. Code is: \(profile?.pairingCode ?? "Unknown")")
 
         } catch {
@@ -43,7 +47,57 @@ final class AppStateManager {
 
             currentUser = nil
             currentCouple = nil
+            partnerProfile = nil
         }
+    }
+
+    /// Fetches the partner's profile and updates the widget data
+    func loadPartnerProfile() async {
+        guard let couple = currentCouple, let myId = currentUser?.id else { return }
+        // Determine which ID is the partner
+        let partnerId = couple.user1Id == myId ? couple.user2Id : couple.user1Id
+
+        do {
+            let partner: Profile = try await supabase.client
+                .from("profiles")
+                .select()
+                .eq("id", value: partnerId)
+                .single()
+                .execute()
+                .value
+
+            self.partnerProfile = partner
+            self.updateWidgetData(partner: partner)
+        } catch {
+            print("🚨 Failed to fetch partner profile: \(error)")
+        }
+    }
+
+    /// Calculates distance and pushes it to the App Group UserDefaults
+    private func updateWidgetData(partner: Profile) {
+        guard let defaults = UserDefaults(suiteName: "group.forever.widget") else { return }
+
+        // 1. Sync Battery
+        if let battery = partner.batteryLevel {
+            defaults.set(battery, forKey: "partnerBattery")
+        }
+
+        // 2. Sync Distance
+        if let myLat = currentUser?.latitude, let myLon = currentUser?.longitude,
+           let pLat = partner.latitude, let pLon = partner.longitude {
+
+            let myLocation = CLLocation(latitude: myLat, longitude: myLon)
+            let partnerLocation = CLLocation(latitude: pLat, longitude: pLon)
+
+            // Convert meters to miles
+            let distanceInMeters = myLocation.distance(from: partnerLocation)
+            let distanceInMiles = distanceInMeters / 1609.344
+
+            defaults.set(distanceInMiles, forKey: "partnerDistance")
+        }
+
+        // 3. Force the widget to instantly refresh
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// After the user enters a partner code, links accounts and refreshes `currentCouple`.

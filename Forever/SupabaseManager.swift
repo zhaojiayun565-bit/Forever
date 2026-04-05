@@ -18,8 +18,8 @@ final class SupabaseManager {
     let client: SupabaseClient
 
     init(
-        supabaseURL: URL = URL(string: "https://YOUR_PROJECT.supabase.co")!,
-        supabaseKey: String = "YOUR_SUPABASE_ANON_KEY"
+        supabaseURL: URL = URL(string: "https://cdcnzkbxlyoxukxizfmd.supabase.co")!,
+        supabaseKey: String = "sb_publishable_VygMgDm0S8and8KregtFyA_NF6tFRxK"
     ) {
         client = SupabaseClient(supabaseURL: supabaseURL, supabaseKey: supabaseKey)
     }

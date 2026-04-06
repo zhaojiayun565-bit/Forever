@@ -9,6 +9,9 @@ import SwiftUI
 
 @main
 struct ForeverApp: App {
+    // INJECT THE APP DELEGATE HERE
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
     @State private var appState = AppStateManager()
 
     var body: some Scene {

@@ -125,7 +125,7 @@ final class SupabaseManager {
                 options: FileOptions(contentType: "image/png")
             )
 
-        let publicUrl = try client.storage.from("notes").getPublicUrl(path: path)
+        let publicUrl = try client.storage.from("notes").getPublicURL(path: path)
         return publicUrl.absoluteString
     }
 
@@ -135,6 +135,16 @@ final class SupabaseManager {
 
         try await client.from("profiles")
             .update(NoteUpdateDTO(latest_note_url: url))
+            .eq("id", value: myId)
+            .execute()
+    }
+
+    func updateDeviceToken(_ token: String) async throws {
+        let session = try await client.auth.session
+        let myId = session.user.id
+
+        try await client.from("profiles")
+            .update(DeviceTokenUpdateDTO(device_token: token))
             .eq("id", value: myId)
             .execute()
     }
@@ -165,4 +175,8 @@ private nonisolated struct AmbientDataUpdate: Encodable, Sendable {
 
 private nonisolated struct NoteUpdateDTO: Encodable, Sendable {
     let latest_note_url: String
+}
+
+private nonisolated struct DeviceTokenUpdateDTO: Encodable, Sendable {
+    let device_token: String
 }

@@ -19,7 +19,6 @@ struct Provider: TimelineProvider {
 
             var downloadedImage: UIImage? = nil
 
-            // Download the note image if URL exists
             if let urlString = defaults?.string(forKey: "partnerNoteUrl"),
                let url = URL(string: urlString) {
                 do {
@@ -46,59 +45,99 @@ struct SimpleEntry: TimelineEntry {
 
 struct CoupleWidgetEntryView : View {
     var entry: Provider.Entry
+    @Environment(\.widgetFamily) var family
 
     var body: some View {
-        ZStack {
-            // 1. The Background (Gradient or Note)
-            if let image = entry.noteImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                LinearGradient(
-                    colors: [Color.pink.opacity(0.5), Color.purple.opacity(0.8)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+        switch family {
+        case .accessoryCircular:
+            // Lock Screen: Small Circular Widget
+            ZStack {
+                AccessoryWidgetBackground()
+                VStack(spacing: 2) {
+                    Image(systemName: "heart.fill")
+                        .font(.caption2)
+                    Text(entry.distance > 0 ? String(format: "%.0f", entry.distance) : "--")
+                        .font(.system(.subheadline, design: .rounded).bold())
+                        .minimumScaleFactor(0.5)
+                }
             }
 
-            // 2. The Data Overlay
-            VStack(spacing: 8) {
-                HStack {
-                    Image(systemName: "heart.fill")
-                        .foregroundColor(.pink)
-                        .font(.title3)
-                        // Add shadow so it's readable over drawings
-                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-                    Spacer()
+        case .accessoryRectangular:
+            // Lock Screen: Rectangular Widget
+            if let image = entry.noteImage {
+                // Display the handwritten note as a template mask
+                Image(uiImage: image)
+                    .resizable()
+                    .renderingMode(.template)
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                // Fallback to text if no note exists
+                VStack(alignment: .leading) {
+                    HStack {
+                        Image(systemName: "heart.fill")
+                        Text("Partner")
+                            .font(.headline)
+                    }
+                    Text(entry.distance > 0 ? "\(String(format: "%.0f", entry.distance)) miles away" : "-- miles away")
+                        .font(.caption)
                     HStack(spacing: 4) {
                         Image(systemName: batteryIcon(for: entry.batteryLevel))
                         Text("\(entry.batteryLevel)%")
-                            .font(.caption2.bold())
                     }
-                    .foregroundColor(.white)
-                    .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
-                }
-
-                Spacer()
-
-                // Only show distance if there ISN'T a drawing, to keep the drawing clean
-                if entry.noteImage == nil {
-                    Text(entry.distance > 0 ? String(format: "%.0f", entry.distance) : "--")
-                        .font(.system(size: 42, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
-
-                    Text("miles away")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(.white.opacity(0.8))
-                        .textCase(.uppercase)
+                    .font(.caption2)
                 }
             }
-            .padding()
+
+        default:
+            // Home Screen: Colorful Widgets (Small & Medium)
+            ZStack {
+                if let image = entry.noteImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    LinearGradient(
+                        colors: [Color.pink.opacity(0.5), Color.purple.opacity(0.8)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
+
+                VStack(spacing: 8) {
+                    HStack {
+                        Image(systemName: "heart.fill")
+                            .foregroundColor(.pink)
+                            .font(.title3)
+                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                        Spacer()
+                        HStack(spacing: 4) {
+                            Image(systemName: batteryIcon(for: entry.batteryLevel))
+                            Text("\(entry.batteryLevel)%")
+                                .font(.caption2.bold())
+                        }
+                        .foregroundColor(.white)
+                        .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
+                    }
+
+                    Spacer()
+
+                    if entry.noteImage == nil {
+                        Text(entry.distance > 0 ? String(format: "%.0f", entry.distance) : "--")
+                            .font(.system(size: 42, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                            .minimumScaleFactor(0.5)
+                            .lineLimit(1)
+
+                        Text("miles away")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.white.opacity(0.8))
+                            .textCase(.uppercase)
+                    }
+                }
+                .padding()
+            }
+            .containerBackground(for: .widget) { Color.clear }
         }
-        .containerBackground(for: .widget) { Color.clear }
     }
 
     func batteryIcon(for level: Int) -> String {
@@ -118,6 +157,6 @@ struct CoupleWidget: Widget {
         }
         .configurationDisplayName("Partner Status")
         .description("See your partner's notes and distance.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular])
     }
 }

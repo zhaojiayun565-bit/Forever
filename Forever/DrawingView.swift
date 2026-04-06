@@ -8,48 +8,87 @@ struct DrawingView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                // The Canvas
-                CanvasRepresentable(canvasView: $canvasView)
-                    .edgesIgnoringSafeArea(.all)
+        ZStack {
+            // 1. The Fake Lock Screen Background
+            Color.black.ignoresSafeArea()
 
-                if isSending {
-                    Color.black.opacity(0.4).ignoresSafeArea()
-                    ProgressView("Sending to partner...")
-                        .padding()
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                }
+            VStack(spacing: 0) {
+                // 2. The Lock Screen Header (Real-time Clock & Date)
+                LockScreenHeader()
+                    .padding(.top, 60)
+
+                Spacer()
             }
-            .navigationTitle("Draw a Note")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Clear") {
+
+            // 3. The Transparent Drawing Canvas
+            CanvasRepresentable(canvasView: $canvasView)
+                .edgesIgnoringSafeArea(.all)
+
+            // 4. The Custom Blurred Toolbar
+            VStack {
+                Spacer()
+
+                HStack(spacing: 24) {
+                    Button {
                         canvasView.drawing = PKDrawing()
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.title2)
+                            .foregroundColor(.white)
                     }
                     .disabled(isSending)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Send") {
+
+                    Button {
+                        canvasView.undoManager?.undo()
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                    }
+                    .disabled(isSending)
+
+                    Button {
                         Task { await sendNote() }
+                    } label: {
+                        HStack {
+                            Text(isSending ? "Sending..." : "Send")
+                                .fontWeight(.bold)
+                            if !isSending {
+                                Image(systemName: "paperplane.fill")
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(Color.white)
+                        .foregroundColor(.black)
+                        .clipShape(Capsule())
                     }
-                    .buttonStyle(.borderedProminent)
                     .disabled(isSending)
                 }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
+                .background(.ultraThinMaterial, in: Capsule())
+                .environment(\.colorScheme, .dark) // Forces the material to be dark
+                .padding(.bottom, 40)
+            }
+
+            // 5. Sending Overlay
+            if isSending {
+                Color.black.opacity(0.5).ignoresSafeArea()
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.white)
             }
         }
+        .toolbar(.hidden, for: .navigationBar) // Hide default navigation bar for full immersion
     }
 
     private func sendNote() async {
         isSending = true
         defer { isSending = false }
 
-        // Extract the drawing with a white background so it shows up cleanly on the widget
-        let trait = UITraitCollection(userInterfaceStyle: .light)
-        canvasView.backgroundColor = .white
+        // Export with transparent background for Lock Screen widget template mask
         let image = canvasView.drawing.image(from: canvasView.bounds, scale: 2.0)
-        canvasView.backgroundColor = .clear // reset
 
         guard let data = image.pngData() else { return }
 
@@ -57,11 +96,27 @@ struct DrawingView: View {
             let url = try await SupabaseManager.shared.uploadNoteImage(data: data)
             try await SupabaseManager.shared.updateLatestNoteUrl(url: url)
 
-            // Force widget reload on my side too (optional, but good for sync)
             canvasView.drawing = PKDrawing()
             dismiss()
         } catch {
             print("🚨 Failed to upload note: \(error)")
+        }
+    }
+}
+
+struct LockScreenHeader: View {
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1.0)) { context in
+            VStack(spacing: 4) {
+                Text(context.date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                    .font(.system(.title3, design: .default, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+
+                // To mimic the exact iOS lock screen clock font
+                Text(context.date.formatted(.dateTime.hour().minute()))
+                    .font(.system(size: 80, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+            }
         }
     }
 }
@@ -71,7 +126,8 @@ struct CanvasRepresentable: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PKCanvasView {
         canvasView.drawingPolicy = .anyInput
-        canvasView.tool = PKInkingTool(.pen, color: .black, width: 6)
+        // Default to white ink so it pops against the black background
+        canvasView.tool = PKInkingTool(.pen, color: .white, width: 6)
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
         return canvasView

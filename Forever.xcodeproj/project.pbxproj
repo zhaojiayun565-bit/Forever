@@ -53,11 +53,21 @@
 			);
 			target = E08558862F82E8850092B500 /* CoupleWidgetExtension */;
 		};
+		E08558A72F8317430092B500 /* Exceptions for "Forever" folder in "Forever" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = E08558212F7F16EF0092B500 /* Forever */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		E08558242F7F16EF0092B500 /* Forever */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E08558A72F8317430092B500 /* Exceptions for "Forever" folder in "Forever" target */,
+			);
 			path = Forever;
 			sourceTree = "<group>";
 		};
@@ -387,6 +397,7 @@
 				DEVELOPMENT_TEAM = 2L8UB6KF64;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Forever/Info.plist;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location is used to show your partner how far away you are in real-time on your Home Screen widget, helping you both stay connected";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -421,6 +432,7 @@
 				DEVELOPMENT_TEAM = 2L8UB6KF64;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Forever/Info.plist;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location is used to show your partner how far away you are in real-time on your Home Screen widget, helping you both stay connected";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

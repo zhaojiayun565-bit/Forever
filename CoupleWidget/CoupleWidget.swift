@@ -1,6 +1,7 @@
 import WidgetKit
 import SwiftUI
 
+// MARK: - Provider & Entry (Shared by both widgets)
 struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> SimpleEntry {
         SimpleEntry(date: Date(), distance: 456.0, batteryLevel: 85, noteImage: nil)
@@ -43,101 +44,50 @@ struct SimpleEntry: TimelineEntry {
     let noteImage: UIImage?
 }
 
-struct CoupleWidgetEntryView : View {
+// MARK: - Widget 1: Status View (Battery & Distance)
+struct StatusWidgetView: View {
     var entry: Provider.Entry
-    @Environment(\.widgetFamily) var family
 
     var body: some View {
-        switch family {
-        case .accessoryCircular:
-            // Lock Screen: Small Circular Widget
-            ZStack {
-                AccessoryWidgetBackground()
-                VStack(spacing: 2) {
-                    Image(systemName: "heart.fill")
-                        .font(.caption2)
-                    Text(entry.distance > 0 ? String(format: "%.0f", entry.distance) : "--")
-                        .font(.system(.subheadline, design: .rounded).bold())
-                        .minimumScaleFactor(0.5)
-                }
-            }
+        ZStack {
+            LinearGradient(
+                colors: [Color.pink.opacity(0.5), Color.purple.opacity(0.8)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
 
-        case .accessoryRectangular:
-            // Lock Screen: Rectangular Widget
-            if let image = entry.noteImage {
-                // Display the handwritten note as a template mask
-                Image(uiImage: image)
-                    .resizable()
-                    .renderingMode(.template)
-                    .aspectRatio(contentMode: .fit)
-            } else {
-                // Fallback to text if no note exists
-                VStack(alignment: .leading) {
-                    HStack {
-                        Image(systemName: "heart.fill")
-                        Text("Partner")
-                            .font(.headline)
-                    }
-                    Text(entry.distance > 0 ? "\(String(format: "%.0f", entry.distance)) miles away" : "-- miles away")
-                        .font(.caption)
+            VStack(spacing: 8) {
+                HStack {
+                    Image(systemName: "heart.fill")
+                        .foregroundColor(.pink)
+                        .font(.title3)
+                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                    Spacer()
                     HStack(spacing: 4) {
                         Image(systemName: batteryIcon(for: entry.batteryLevel))
                         Text("\(entry.batteryLevel)%")
+                            .font(.caption2.bold())
                     }
-                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
                 }
+
+                Spacer()
+
+                Text(entry.distance > 0 ? String(format: "%.0f", entry.distance) : "--")
+                    .font(.system(size: 42, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+
+                Text("miles away")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(.white.opacity(0.8))
+                    .textCase(.uppercase)
             }
-
-        default:
-            // Home Screen: Colorful Widgets (Small & Medium)
-            ZStack {
-                if let image = entry.noteImage {
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } else {
-                    LinearGradient(
-                        colors: [Color.pink.opacity(0.5), Color.purple.opacity(0.8)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                }
-
-                VStack(spacing: 8) {
-                    HStack {
-                        Image(systemName: "heart.fill")
-                            .foregroundColor(.pink)
-                            .font(.title3)
-                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-                        Spacer()
-                        HStack(spacing: 4) {
-                            Image(systemName: batteryIcon(for: entry.batteryLevel))
-                            Text("\(entry.batteryLevel)%")
-                                .font(.caption2.bold())
-                        }
-                        .foregroundColor(.white)
-                        .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
-                    }
-
-                    Spacer()
-
-                    if entry.noteImage == nil {
-                        Text(entry.distance > 0 ? String(format: "%.0f", entry.distance) : "--")
-                            .font(.system(size: 42, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
-                            .minimumScaleFactor(0.5)
-                            .lineLimit(1)
-
-                        Text("miles away")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(.white.opacity(0.8))
-                            .textCase(.uppercase)
-                    }
-                }
-                .padding()
-            }
-            .containerBackground(for: .widget) { Color.clear }
+            .padding()
         }
+        .containerBackground(for: .widget) { Color.clear }
     }
 
     func batteryIcon(for level: Int) -> String {
@@ -148,15 +98,65 @@ struct CoupleWidgetEntryView : View {
     }
 }
 
-@main
-struct CoupleWidget: Widget {
-    let kind: String = "CoupleWidget"
+// MARK: - Widget 2: Drawing View (Notes)
+struct DrawingWidgetView: View {
+    var entry: Provider.Entry
+
+    var body: some View {
+        ZStack {
+            // Explicitly force a black background so white ink is always visible
+            Color.black
+
+            if let image = entry.noteImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .padding(10)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "scribble.variable")
+                        .font(.largeTitle)
+                    Text("Waiting for note...")
+                        .font(.caption)
+                }
+                .foregroundColor(.white.opacity(0.5))
+            }
+        }
+        // For iOS 17 container backgrounds
+        .containerBackground(for: .widget) { Color.black }
+    }
+}
+
+// MARK: - Widget Configurations
+struct StatusWidget: Widget {
+    let kind: String = "StatusWidget"
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
-            CoupleWidgetEntryView(entry: entry)
+            StatusWidgetView(entry: entry)
         }
         .configurationDisplayName("Partner Status")
-        .description("See your partner's notes and distance.")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular])
+        .description("See your partner's distance and battery.")
+        .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}
+
+struct DrawingWidget: Widget {
+    let kind: String = "DrawingWidget"
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+            DrawingWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Partner Note")
+        .description("See the latest drawing from your partner.")
+        .supportedFamilies([.systemSmall, .systemLarge])
+    }
+}
+
+// MARK: - The Widget Bundle (Registers both widgets)
+@main
+struct ForeverWidgets: WidgetBundle {
+    var body: some Widget {
+        StatusWidget()
+        DrawingWidget()
     }
 }

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppStateManager.self) private var state
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -28,6 +29,13 @@ struct ContentView: View {
                 }
             case (false, false):
                 PairingView()
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                Task {
+                    await state.loadPartnerProfile()
+                }
             }
         }
         .task {

@@ -74,38 +74,55 @@ final class AppStateManager {
         }
     }
 
-    /// Calculates distance and pushes it to the App Group UserDefaults
+    /// Pushes partner fields to the App Group UserDefaults and reloads widgets only when values change.
     private func updateWidgetData(partner: Profile) {
         guard let defaults = UserDefaults(suiteName: "group.forever.widget") else { return }
 
-        // 1. Sync Battery
+        var didChange = false
+
+        // 1. Battery
         if let battery = partner.batteryLevel {
-            defaults.set(battery, forKey: "partnerBattery")
+            let key = "partnerBattery"
+            let existing = defaults.object(forKey: key) as? Int
+            if existing != battery {
+                defaults.set(battery, forKey: key)
+                didChange = true
+            }
         }
 
-        // 2. Sync Distance
+        // 2. Distance (ignore sub-mile float noise so GPS jitter does not spam reloads)
         if let myLat = currentUser?.latitude, let myLon = currentUser?.longitude,
            let pLat = partner.latitude, let pLon = partner.longitude {
-
             let myLocation = CLLocation(latitude: myLat, longitude: myLon)
             let partnerLocation = CLLocation(latitude: pLat, longitude: pLon)
-
-            // Convert meters to miles
             let distanceInMeters = myLocation.distance(from: partnerLocation)
             let distanceInMiles = distanceInMeters / 1609.344
 
-            defaults.set(distanceInMiles, forKey: "partnerDistance")
+            let key = "partnerDistance"
+            let existing = defaults.object(forKey: key) as? Double
+            let epsilonMiles = 0.0005
+            let distanceChanged = existing.map { abs($0 - distanceInMiles) > epsilonMiles } ?? true
+            if distanceChanged {
+                defaults.set(distanceInMiles, forKey: key)
+                didChange = true
+            }
         }
 
-        // 3. Sync Note URL
+        // 3. Note URL
+        let noteKey = "partnerNoteUrl"
         if let noteUrl = partner.latestNoteUrl {
-            defaults.set(noteUrl, forKey: "partnerNoteUrl")
-        } else {
-            defaults.removeObject(forKey: "partnerNoteUrl")
+            if defaults.string(forKey: noteKey) != noteUrl {
+                defaults.set(noteUrl, forKey: noteKey)
+                didChange = true
+            }
+        } else if defaults.object(forKey: noteKey) != nil {
+            defaults.removeObject(forKey: noteKey)
+            didChange = true
         }
 
-        // 3. Force the widget to instantly refresh
-        WidgetCenter.shared.reloadAllTimelines()
+        if didChange {
+            WidgetCenter.shared.reloadAllTimelines()
+        }
     }
 
     /// After the user enters a partner code, links accounts and refreshes `currentCouple`.

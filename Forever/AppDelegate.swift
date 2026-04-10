@@ -47,15 +47,21 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
         print("👻 Silent Push Received!")
 
-        // Extract the URL directly from the Apple Push payload
-        if let noteUrl = userInfo["note_url"] as? String {
-            print("📥 Catching new note URL: \(noteUrl)")
-            if let defaults = UserDefaults(suiteName: "group.forever.widget") {
+        if let defaults = UserDefaults(suiteName: "group.forever.widget") {
+            // Catch Note URL
+            if let noteUrl = userInfo["note_url"] as? String {
+                print("📥 Catching new note URL: \(noteUrl)")
                 defaults.set(noteUrl, forKey: "partnerNoteUrl")
+            }
+            
+            // Catch Lock Screen Message
+            if let message = userInfo["latest_message"] as? String {
+                print("📥 Catching new lock screen message: \(message)")
+                defaults.set(message, forKey: "partnerMessage")
             }
         }
 
-        // Reload the widget now that the new URL is saved
+        // Reload the widget now that new data is saved
         WidgetCenter.shared.reloadAllTimelines()
 
         completionHandler(.newData)

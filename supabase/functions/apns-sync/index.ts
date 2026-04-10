@@ -12,8 +12,8 @@ serve(async (req) => {
     const record = payload.record 
     console.log("🔔 Webhook triggered for profile:", record.id)
 
-    if (!record.latest_note_url) {
-        return new Response("No note url, ignoring.", { status: 200 })
+    if (!record.latest_note_url && !record.latest_message) {
+        return new Response("No syncable data updated, ignoring.", { status: 200 })
     }
 
     const { data: couple, error: coupleError } = await supabase
@@ -77,7 +77,8 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         aps: { "content-available": 1 },
-        note_url: record.latest_note_url
+        note_url: record.latest_note_url,
+        latest_message: record.latest_message
       })
     })
 

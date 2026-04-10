@@ -10,6 +10,9 @@ struct Profile: Codable, Identifiable, Hashable {
     var longitude: Double?
     var batteryLevel: Int?
     var latestNoteUrl: String?
+    var displayName: String?
+    var latestMessage: String?
+    var anniversaryDate: Date?
     var deviceToken: String?
     let createdAt: Date
 
@@ -20,6 +23,9 @@ struct Profile: Codable, Identifiable, Hashable {
         case longitude
         case batteryLevel = "battery_level"
         case latestNoteUrl = "latest_note_url"
+        case displayName = "display_name"
+        case latestMessage = "latest_message"
+        case anniversaryDate = "anniversary_date"
         case deviceToken = "device_token"
         case createdAt = "created_at"
     }
@@ -52,6 +58,9 @@ extension Profile {
         longitude: -122.0090,
         batteryLevel: 85,
         latestNoteUrl: nil,
+        displayName: "Taylor",
+        latestMessage: "Thinking of you",
+        anniversaryDate: Date(),
         deviceToken: nil,
         createdAt: Date()
     )

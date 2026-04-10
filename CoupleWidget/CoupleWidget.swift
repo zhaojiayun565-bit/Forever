@@ -4,11 +4,27 @@ import SwiftUI
 // MARK: - Provider & Entry (Shared by both widgets)
 struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> SimpleEntry {
-        SimpleEntry(date: Date(), distance: 456.0, batteryLevel: 85, noteImage: nil)
+        SimpleEntry(
+            date: Date(),
+            distance: 456.0,
+            batteryLevel: 85,
+            noteImage: nil,
+            partnerName: "Partner",
+            partnerMessage: "Love you always",
+            anniversaryDate: Date()
+        )
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
-        let entry = SimpleEntry(date: Date(), distance: 456.0, batteryLevel: 85, noteImage: nil)
+        let entry = SimpleEntry(
+            date: Date(),
+            distance: 456.0,
+            batteryLevel: 85,
+            noteImage: nil,
+            partnerName: "Partner",
+            partnerMessage: "Love you always",
+            anniversaryDate: Date()
+        )
         completion(entry)
     }
 
@@ -17,6 +33,10 @@ struct Provider: TimelineProvider {
             let defaults = UserDefaults(suiteName: "group.forever.widget")
             let distance = defaults?.double(forKey: "partnerDistance") ?? 0.0
             let battery = defaults?.integer(forKey: "partnerBattery") ?? 0
+            let partnerName = defaults?.string(forKey: "partnerName")
+            let partnerMessage = defaults?.string(forKey: "partnerMessage")
+            let anniversaryTimestamp = defaults?.object(forKey: "anniversaryDate") as? Double
+            let anniversaryDate = anniversaryTimestamp.map { Date(timeIntervalSince1970: $0) }
 
             var downloadedImage: UIImage? = nil
 
@@ -30,7 +50,15 @@ struct Provider: TimelineProvider {
                 }
             }
 
-            let entry = SimpleEntry(date: Date(), distance: distance, batteryLevel: battery, noteImage: downloadedImage)
+            let entry = SimpleEntry(
+                date: Date(),
+                distance: distance,
+                batteryLevel: battery,
+                noteImage: downloadedImage,
+                partnerName: partnerName,
+                partnerMessage: partnerMessage,
+                anniversaryDate: anniversaryDate
+            )
             let timeline = Timeline(entries: [entry], policy: .never)
             completion(timeline)
         }
@@ -42,6 +70,9 @@ struct SimpleEntry: TimelineEntry {
     let distance: Double
     let batteryLevel: Int
     let noteImage: UIImage?
+    let partnerName: String?
+    let partnerMessage: String?
+    let anniversaryDate: Date?
 }
 
 // MARK: - Widget 1: Status View (Battery & Distance)
@@ -127,6 +158,115 @@ struct DrawingWidgetView: View {
     }
 }
 
+// MARK: - Widget 3: Lock Screen Message
+struct LockScreenMessageWidgetView: View {
+    var entry: Provider.Entry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if let message = cleanedMessage {
+                Text(cleanedName ?? "Partner")
+                    .font(.caption2)
+                    .lineLimit(1)
+                Text(message)
+                    .font(.headline.weight(.bold))
+                    .lineLimit(2)
+            } else {
+                Text(cleanedName ?? "Partner")
+                    .font(.caption2)
+                    .lineLimit(1)
+                Text("No message yet")
+                    .font(.headline.weight(.bold))
+                    .lineLimit(2)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .containerBackground(for: .widget) { Color.clear }
+    }
+
+    private var cleanedName: String? {
+        let value = entry.partnerName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (value?.isEmpty == false) ? value : nil
+    }
+
+    private var cleanedMessage: String? {
+        let value = entry.partnerMessage?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (value?.isEmpty == false) ? value : nil
+    }
+}
+
+// MARK: - Widget 4: Days Together
+struct DaysTogetherWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    var entry: Provider.Entry
+
+    var body: some View {
+        Group {
+            switch family {
+            case .accessoryCircular:
+                accessoryCircularView
+            default:
+                systemSmallView
+            }
+        }
+        .containerBackground(for: .widget) {
+            family == .accessoryCircular ? Color.clear : Color.black
+        }
+    }
+
+    private var daysTogether: Int? {
+        guard let anniversary = entry.anniversaryDate else { return nil }
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: anniversary)
+        let end = calendar.startOfDay(for: Date())
+        return max(calendar.dateComponents([.day], from: start, to: end).day ?? 0, 0)
+    }
+
+    private var dayText: String {
+        if let daysTogether {
+            return "\(daysTogether)"
+        }
+        return "--"
+    }
+
+    private var accessoryCircularView: some View {
+        ZStack {
+            Circle().fill(Color.clear)
+            VStack(spacing: 0) {
+                Image(systemName: "heart.fill")
+                    .font(.caption2)
+                Text(dayText)
+                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private var systemSmallView: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color.pink.opacity(0.9), Color.purple.opacity(0.9), Color.blue.opacity(0.9)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            VStack(spacing: 8) {
+                Image(systemName: "heart.fill")
+                    .font(.title3)
+                    .foregroundStyle(.white)
+                Text("\(dayText) Days Together")
+                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(10)
+        }
+    }
+}
+
 // MARK: - Widget Configurations
 struct StatusWidget: Widget {
     let kind: String = "StatusWidget"
@@ -152,11 +292,37 @@ struct DrawingWidget: Widget {
     }
 }
 
+struct LockScreenMessageWidget: Widget {
+    let kind: String = "LockScreenMessageWidget"
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+            LockScreenMessageWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Partner Message")
+        .description("Shows your partner's latest lock screen message.")
+        .supportedFamilies([.accessoryRectangular])
+    }
+}
+
+struct DaysTogetherWidget: Widget {
+    let kind: String = "DaysTogetherWidget"
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+            DaysTogetherWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Days Together")
+        .description("Tracks days since your anniversary date.")
+        .supportedFamilies([.accessoryCircular, .systemSmall])
+    }
+}
+
 // MARK: - The Widget Bundle (Registers both widgets)
 @main
 struct ForeverWidgets: WidgetBundle {
     var body: some Widget {
         StatusWidget()
         DrawingWidget()
+        LockScreenMessageWidget()
+        DaysTogetherWidget()
     }
 }

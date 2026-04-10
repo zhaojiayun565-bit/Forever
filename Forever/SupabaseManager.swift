@@ -148,6 +148,31 @@ final class SupabaseManager {
             .eq("id", value: myId)
             .execute()
     }
+
+    /// Updates display name and anniversary date for the signed-in user.
+    func updateProfileDetails(name: String, anniversary: Date) async throws {
+        let session = try await client.auth.session
+        struct UpdateDTO: Encodable, Sendable {
+            let display_name: String
+            let anniversary_date: Date
+        }
+        try await client.from("profiles")
+            .update(UpdateDTO(display_name: name, anniversary_date: anniversary))
+            .eq("id", value: session.user.id)
+            .execute()
+    }
+
+    /// Sends a lock screen message for the signed-in user.
+    func sendLockScreenMessage(_ message: String) async throws {
+        let session = try await client.auth.session
+        struct MsgDTO: Encodable, Sendable {
+            let latest_message: String
+        }
+        try await client.from("profiles")
+            .update(MsgDTO(latest_message: message))
+            .eq("id", value: session.user.id)
+            .execute()
+    }
 }
 
 // MARK: - DTOs (Data Transfer Objects)

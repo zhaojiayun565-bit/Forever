@@ -120,6 +120,35 @@ final class AppStateManager {
             didChange = true
         }
 
+        // 4. Name
+        if let name = partner.displayName {
+            let key = "partnerName"
+            if defaults.string(forKey: key) != name {
+                defaults.set(name, forKey: key)
+                didChange = true
+            }
+        }
+
+        // 5. Lock screen message
+        if let msg = partner.latestMessage {
+            let key = "partnerMessage"
+            if defaults.string(forKey: key) != msg {
+                defaults.set(msg, forKey: key)
+                didChange = true
+            }
+        }
+
+        // 6. Anniversary (stored as epoch seconds)
+        if let date = partner.anniversaryDate {
+            let key = "anniversaryDate"
+            let value = date.timeIntervalSince1970
+            let existing = defaults.object(forKey: key) as? Double
+            if existing != value {
+                defaults.set(value, forKey: key)
+                didChange = true
+            }
+        }
+
         if didChange {
             WidgetCenter.shared.reloadAllTimelines()
         }

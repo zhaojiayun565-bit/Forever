@@ -1,15 +1,8 @@
-//
-//  ContentView.swift
-//  Forever
-//
-//  Created by Jia Yun Zhao on 2026-04-02.
-//
-
 import SwiftUI
 
 struct ContentView: View {
     @Environment(AppStateManager.self) private var state
-    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.scenePhase) var scenePhase
 
     var body: some View {
         Group {
@@ -17,25 +10,29 @@ struct ContentView: View {
             case (true, _):
                 ProgressView()
             case (false, true):
-                HomeDashboardView()
+                TabView {
+                    HomeDashboardView()
+                        .tabItem { Label("Us", systemImage: "heart.fill") }
+                    
+                    ArchiveView()
+                        .tabItem { Label("Archive", systemImage: "square.grid.2x2.fill") }
+                    
+                    SettingsView()
+                        .tabItem { Label("Me", systemImage: "person.circle.fill") }
+                }
+                .tint(.pink) // Capwords style accent
             case (false, false):
                 PairingView()
-            }
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active {
-                Task {
-                    await state.loadPartnerProfile()
-                }
             }
         }
         .task {
             await state.initializeApp()
         }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Self-Healing Widget Sync
+            if newPhase == .active && state.currentCouple != nil {
+                Task { await state.loadPartnerProfile() }
+            }
+        }
     }
-}
-
-#Preview {
-    ContentView()
-        .environment(AppStateManager())
 }

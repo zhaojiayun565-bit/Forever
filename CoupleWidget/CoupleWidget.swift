@@ -9,6 +9,7 @@ struct Provider: TimelineProvider {
             distance: 456.0,
             batteryLevel: 85,
             noteImage: nil,
+            myName: "Me",
             partnerName: "Partner",
             partnerMessage: "Love you always",
             anniversaryDate: Date()
@@ -21,6 +22,7 @@ struct Provider: TimelineProvider {
             distance: 456.0,
             batteryLevel: 85,
             noteImage: nil,
+            myName: "Me",
             partnerName: "Partner",
             partnerMessage: "Love you always",
             anniversaryDate: Date()
@@ -33,7 +35,8 @@ struct Provider: TimelineProvider {
             let defaults = UserDefaults(suiteName: "group.forever.widget")
             let distance = defaults?.double(forKey: "partnerDistance") ?? 0.0
             let battery = defaults?.integer(forKey: "partnerBattery") ?? 0
-            let partnerName = defaults?.string(forKey: "partnerName")
+            let myName = defaults?.string(forKey: "myName") ?? "Me"
+            let partnerName = defaults?.string(forKey: "partnerName") ?? "P"
             let partnerMessage = defaults?.string(forKey: "partnerMessage")
             let anniversaryTimestamp = defaults?.object(forKey: "anniversaryDate") as? Double
             let anniversaryDate = anniversaryTimestamp.map { Date(timeIntervalSince1970: $0) }
@@ -55,6 +58,7 @@ struct Provider: TimelineProvider {
                 distance: distance,
                 batteryLevel: battery,
                 noteImage: downloadedImage,
+                myName: myName,
                 partnerName: partnerName,
                 partnerMessage: partnerMessage,
                 anniversaryDate: anniversaryDate
@@ -70,7 +74,8 @@ struct SimpleEntry: TimelineEntry {
     let distance: Double
     let batteryLevel: Int
     let noteImage: UIImage?
-    let partnerName: String?
+    let myName: String
+    let partnerName: String
     let partnerMessage: String?
     let anniversaryDate: Date?
 }
@@ -185,13 +190,86 @@ struct LockScreenMessageWidgetView: View {
     }
 
     private var cleanedName: String? {
-        let value = entry.partnerName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (value?.isEmpty == false) ? value : nil
+        let value = entry.partnerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
     }
 
     private var cleanedMessage: String? {
         let value = entry.partnerMessage?.trimmingCharacters(in: .whitespacesAndNewlines)
         return (value?.isEmpty == false) ? value : nil
+    }
+}
+
+struct DistanceLockScreenWidgetView: View {
+    var entry: Provider.Entry
+
+    var myInitial: String { String(entry.myName.prefix(1)).uppercased() }
+    var partnerInitial: String { String(entry.partnerName.prefix(1)).uppercased() }
+
+    var distanceText: String {
+        entry.distance > 0 ? "\(Int(entry.distance)) mi" : "-- mi"
+    }
+
+    // Calculate dynamic spacing based on distance.
+    // 5000+ miles = max spacing. 0 miles = 0 spacing (touching the heart).
+    var dynamicSpacing: CGFloat {
+        guard entry.distance > 0 else { return 20 } // Default spacing if no data
+        let maxDistance: Double = 5000.0 // The distance considered 'max separation'
+        let maxSpacing: CGFloat = 25.0   // Max pixels of space between initial and heart
+        let minSpacing: CGFloat = 2.0    // Min pixels of space (almost touching)
+
+        // Map the distance to a percentage (0.0 to 1.0)
+        let percentage = min(max(entry.distance / maxDistance, 0.0), 1.0)
+
+        // Calculate the spacing
+        let spacing = minSpacing + (maxSpacing - minSpacing) * CGFloat(percentage)
+        return spacing
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            // Top Row: Distance Label and Value
+            HStack(spacing: 4) {
+                Text("DISTANCE")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Text(distanceText)
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+            }
+
+            // Bottom Row: Initials dynamically moving closer to the heart
+            HStack(spacing: dynamicSpacing) {
+                ZStack {
+                    Circle().stroke(lineWidth: 2.2)
+                    Text(myInitial)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                }
+                .frame(width: 26, height: 26)
+
+                // Dashed line and Heart
+                HStack(spacing: 2) {
+                    Rectangle()
+                        .fill(.secondary.opacity(0.5))
+                        .frame(width: dynamicSpacing > 5 ? dynamicSpacing - 5 : 0, height: 1)
+
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+
+                    Rectangle()
+                        .fill(.secondary.opacity(0.5))
+                        .frame(width: dynamicSpacing > 5 ? dynamicSpacing - 5 : 0, height: 1)
+                }
+
+                ZStack {
+                    Circle().stroke(lineWidth: 2.2)
+                    Text(partnerInitial)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                }
+                .frame(width: 26, height: 26)
+            }
+        }
+        .containerBackground(for: .widget) { Color.clear }
     }
 }
 
@@ -304,6 +382,18 @@ struct LockScreenMessageWidget: Widget {
     }
 }
 
+struct DistanceLockScreenWidget: Widget {
+    let kind: String = "DistanceLockScreenWidget"
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+            DistanceLockScreenWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Connected Distance")
+        .description("See how far away you are from each other.")
+        .supportedFamilies([.accessoryRectangular])
+    }
+}
+
 struct DaysTogetherWidget: Widget {
     let kind: String = "DaysTogetherWidget"
     var body: some WidgetConfiguration {
@@ -323,6 +413,7 @@ struct ForeverWidgets: WidgetBundle {
         StatusWidget()
         DrawingWidget()
         LockScreenMessageWidget()
+        DistanceLockScreenWidget()
         DaysTogetherWidget()
     }
 }

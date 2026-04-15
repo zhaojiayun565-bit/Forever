@@ -128,6 +128,9 @@ final class AppStateManager {
                 didChange = true
             }
         }
+        if let myName = currentUser?.displayName {
+            defaults.set(myName, forKey: "myName")
+        }
 
         // 5. Lock screen message
         if let msg = partner.latestMessage {

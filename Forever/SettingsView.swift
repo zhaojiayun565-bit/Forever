@@ -1,11 +1,40 @@
 import SwiftUI
+import WidgetKit
+
+private enum DistanceUnitOption: String, CaseIterable {
+    case miles = "mi"
+    case kilometers = "km"
+
+    var label: String {
+        switch self {
+        case .miles:
+            return "Miles (mi)"
+        case .kilometers:
+            return "Kilometers (km)"
+        }
+    }
+}
 
 struct SettingsView: View {
     @Environment(AppStateManager.self) private var state
     @State private var displayName = ""
     @State private var anniversary = Date()
     @State private var isSaving = false
-    
+    @AppStorage("distanceUnit") private var distanceUnit = DistanceUnitOption.miles.rawValue
+
+    private var normalizedDistanceUnit: String {
+        DistanceUnitOption(rawValue: distanceUnit)?.rawValue ?? DistanceUnitOption.miles.rawValue
+    }
+
+    private func syncDistanceUnitToWidgetDefaults() {
+        guard let defaults = UserDefaults(suiteName: "group.forever.widget") else { return }
+        let unit = normalizedDistanceUnit
+        if defaults.string(forKey: "distanceUnit") != unit {
+            defaults.set(unit, forKey: "distanceUnit")
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -34,7 +63,16 @@ struct SettingsView: View {
                     }
                     .disabled(displayName.isEmpty)
                 }
-                
+
+                Section("Preferences") {
+                    Picker("Distance Unit", selection: $distanceUnit) {
+                        ForEach(DistanceUnitOption.allCases, id: \.rawValue) { option in
+                            Text(option.label).tag(option.rawValue)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
                 Section("Pairing") {
                     HStack {
                         Text("Your Invite Code")
@@ -54,6 +92,16 @@ struct SettingsView: View {
             .onAppear {
                 if let name = state.currentUser?.displayName { displayName = name }
                 if let date = state.currentUser?.anniversaryDate { anniversary = date }
+                if distanceUnit != normalizedDistanceUnit {
+                    distanceUnit = normalizedDistanceUnit
+                }
+                syncDistanceUnitToWidgetDefaults()
+            }
+            .onChange(of: distanceUnit) { _, _ in
+                if distanceUnit != normalizedDistanceUnit {
+                    distanceUnit = normalizedDistanceUnit
+                }
+                syncDistanceUnitToWidgetDefaults()
             }
         }
     }

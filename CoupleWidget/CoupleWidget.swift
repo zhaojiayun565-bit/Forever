@@ -6,9 +6,10 @@ struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> SimpleEntry {
         SimpleEntry(
             date: Date(),
-            distance: 456.0,
+            distance: 1234.0,
             batteryLevel: 85,
             noteImage: nil,
+            distanceUnit: "mi",
             myName: "Me",
             partnerName: "Partner",
             partnerMessage: "Love you always",
@@ -19,9 +20,10 @@ struct Provider: TimelineProvider {
     func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
         let entry = SimpleEntry(
             date: Date(),
-            distance: 456.0,
+            distance: 1234.0,
             batteryLevel: 85,
             noteImage: nil,
+            distanceUnit: "mi",
             myName: "Me",
             partnerName: "Partner",
             partnerMessage: "Love you always",
@@ -35,6 +37,7 @@ struct Provider: TimelineProvider {
             let defaults = UserDefaults(suiteName: "group.forever.widget")
             let distance = defaults?.double(forKey: "partnerDistance") ?? 0.0
             let battery = defaults?.integer(forKey: "partnerBattery") ?? 0
+            let distanceUnit = defaults?.string(forKey: "distanceUnit") ?? "mi"
             let myName = defaults?.string(forKey: "myName") ?? "Me"
             let partnerName = defaults?.string(forKey: "partnerName") ?? "P"
             let partnerMessage = defaults?.string(forKey: "partnerMessage")
@@ -58,6 +61,7 @@ struct Provider: TimelineProvider {
                 distance: distance,
                 batteryLevel: battery,
                 noteImage: downloadedImage,
+                distanceUnit: distanceUnit,
                 myName: myName,
                 partnerName: partnerName,
                 partnerMessage: partnerMessage,
@@ -74,6 +78,7 @@ struct SimpleEntry: TimelineEntry {
     let distance: Double
     let batteryLevel: Int
     let noteImage: UIImage?
+    let distanceUnit: String
     let myName: String
     let partnerName: String
     let partnerMessage: String?
@@ -83,6 +88,18 @@ struct SimpleEntry: TimelineEntry {
 // MARK: - Widget 1: Status View (Battery & Distance)
 struct StatusWidgetView: View {
     var entry: Provider.Entry
+
+    private var isKilometers: Bool {
+        entry.distanceUnit == "km"
+    }
+
+    private var convertedDistance: Double {
+        isKilometers ? entry.distance * 1.609344 : entry.distance
+    }
+
+    private var distanceUnitLabel: String {
+        isKilometers ? "km away" : "miles away"
+    }
 
     var body: some View {
         ZStack {
@@ -110,13 +127,13 @@ struct StatusWidgetView: View {
 
                 Spacer()
 
-                Text(entry.distance > 0 ? String(format: "%.0f", entry.distance) : "--")
+                Text(entry.distance > 0 ? String(format: "%.0f", convertedDistance) : "--")
                     .font(.system(size: 42, weight: .black, design: .rounded))
                     .foregroundColor(.white)
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
 
-                Text("miles away")
+                Text(distanceUnitLabel)
                     .font(.caption.weight(.bold))
                     .foregroundColor(.white.opacity(0.8))
                     .textCase(.uppercase)
@@ -205,9 +222,12 @@ struct DistanceLockScreenWidgetView: View {
 
     var myInitial: String { String(entry.myName.prefix(1)).uppercased() }
     var partnerInitial: String { String(entry.partnerName.prefix(1)).uppercased() }
+    var isKilometers: Bool { entry.distanceUnit == "km" }
+    var convertedDistance: Double { isKilometers ? entry.distance * 1.609344 : entry.distance }
+    var distanceUnitLabel: String { isKilometers ? "km" : "mi" }
 
     var distanceText: String {
-        entry.distance > 0 ? "\(Int(entry.distance)) mi" : "-- mi"
+        entry.distance > 0 ? "\(Int(convertedDistance)) \(distanceUnitLabel)" : "-- \(distanceUnitLabel)"
     }
 
     // Calculate dynamic spacing based on distance.

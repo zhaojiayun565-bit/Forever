@@ -1,13 +1,43 @@
 import SwiftUI
+import CoreLocation
 
 struct HomeDashboardView: View {
     @Environment(AppStateManager.self) private var state
+    @AppStorage("distanceUnit") private var distanceUnit = "mi"
     @State private var lockScreenMessage = ""
     @State private var isDrawing = false
     
     var daysTogether: Int {
         guard let date = state.currentUser?.anniversaryDate else { return 0 }
         return Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
+    }
+
+    private var distanceInMiles: Double? {
+        guard
+            let myLat = state.currentUser?.latitude,
+            let myLon = state.currentUser?.longitude,
+            let partnerLat = state.partnerProfile?.latitude,
+            let partnerLon = state.partnerProfile?.longitude
+        else {
+            return nil
+        }
+        let myLocation = CLLocation(latitude: myLat, longitude: myLon)
+        let partnerLocation = CLLocation(latitude: partnerLat, longitude: partnerLon)
+        return myLocation.distance(from: partnerLocation) / 1609.344
+    }
+
+    private var isKilometers: Bool {
+        distanceUnit == "km"
+    }
+
+    private var displayDistanceValue: String {
+        guard let miles = distanceInMiles, miles > 0 else { return "--" }
+        let value = isKilometers ? miles * 1.609344 : miles
+        return String(format: "%.0f", value)
+    }
+
+    private var displayDistanceUnit: String {
+        isKilometers ? "km away" : "miles away"
     }
     
     var body: some View {
@@ -30,6 +60,26 @@ struct HomeDashboardView: View {
                                     )
                                 Text("days")
                                     .font(.system(.title2, design: .rounded).weight(.bold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+
+                    BubblyCard {
+                        VStack(spacing: 8) {
+                            Text("Distance Apart")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.secondary)
+
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(displayDistanceValue)
+                                    .font(.system(size: 52, weight: .black, design: .rounded))
+                                    .foregroundStyle(
+                                        LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                    )
+                                Text(displayDistanceUnit)
+                                    .font(.system(.title3, design: .rounded).weight(.bold))
                                     .foregroundStyle(.secondary)
                             }
                         }

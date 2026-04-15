@@ -131,6 +131,11 @@ final class AppStateManager {
         if let myName = currentUser?.displayName {
             defaults.set(myName, forKey: "myName")
         }
+        let preferredDistanceUnit = UserDefaults.standard.string(forKey: "distanceUnit") ?? "mi"
+        if defaults.string(forKey: "distanceUnit") != preferredDistanceUnit {
+            defaults.set(preferredDistanceUnit, forKey: "distanceUnit")
+            didChange = true
+        }
 
         // 5. Lock screen message
         if let msg = partner.latestMessage {

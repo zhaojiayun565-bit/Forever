@@ -29,7 +29,7 @@ struct HomeDashboardView: View {
                                         LinearGradient(colors: [.pink, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
                                     )
                                 Text("days")
-                                    .font(.title2.weight(.bold).design(.rounded))
+                                    .font(.system(.title2, design: .rounded).weight(.bold))
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -43,7 +43,7 @@ struct HomeDashboardView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Draw a Note")
-                                    .font(.title3.weight(.bold).design(.rounded))
+                                    .font(.system(.title3, design: .rounded).weight(.bold))
                                 Text("Send to their Home Screen")
                                     .font(.subheadline)
                                     .opacity(0.8)
@@ -66,7 +66,7 @@ struct HomeDashboardView: View {
                     BubblyCard {
                         VStack(alignment: .leading, spacing: 16) {
                             Label("Lock Screen Message", systemImage: "lock.iphone")
-                                .font(.headline.design(.rounded))
+                                .font(.system(.headline, design: .rounded))
                             
                             HStack {
                                 TextField("Thinking of you...", text: $lockScreenMessage)

@@ -86,6 +86,7 @@ struct ArchiveNoteCard: View {
                 }
             }
             .frame(height: 160)
+            .background(Color.black)
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 5)
 

@@ -127,7 +127,7 @@ struct CanvasRepresentable: UIViewRepresentable {
     func makeUIView(context: Context) -> PKCanvasView {
         canvasView.drawingPolicy = .anyInput
         // Default to white ink so it pops against the black background
-        canvasView.tool = PKInkingTool(.pen, color: .white, width: 6)
+        canvasView.tool = PKInkingTool(.pen, color: .white, width: 5)
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
         return canvasView

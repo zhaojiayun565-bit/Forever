@@ -13,6 +13,7 @@ final class AppStateManager {
     var currentUser: Profile?
     var currentCouple: Couple?
     var partnerProfile: Profile?
+    var archiveNotes: [ArchiveNote] = []
     var isLoading = true
 
     init(supabase: SupabaseManager = .shared) {
@@ -166,6 +167,17 @@ final class AppStateManager {
     /// After the user enters a partner code, links accounts and refreshes `currentCouple`.
     func linkWithPartner(code: String) async throws {
         currentCouple = try await supabase.linkPartner(code: code)
+    }
+
+    func loadArchive() async {
+        guard let myId = currentUser?.id, let couple = currentCouple else { return }
+        let partnerId = couple.user1Id == myId ? couple.user2Id : couple.user1Id
+
+        do {
+            archiveNotes = try await supabase.fetchArchiveNotes(myId: myId, partnerId: partnerId)
+        } catch {
+            print("🚨 Failed to load archive: \(error)")
+        }
     }
 
     private static func randomSixDigitCode() -> String {

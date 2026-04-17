@@ -178,6 +178,45 @@ final class SupabaseManager {
             .eq("id", value: session.user.id)
             .execute()
     }
+
+    func fetchArchiveNotes(myId: UUID, partnerId: UUID) async throws -> [ArchiveNote] {
+        var notes: [ArchiveNote] = []
+
+        // Storage list items expose `createdAt` as `Date?` in this SDK version.
+        func parseDate(_ date: Date?) -> Date {
+            date ?? Date()
+        }
+
+        if let myFiles = try? await client.storage.from("notes").list(path: myId.uuidString) {
+            for file in myFiles where file.name.hasSuffix(".png") {
+                let url = try client.storage.from("notes").getPublicURL(path: "\(myId.uuidString)/\(file.name)")
+                notes.append(
+                    ArchiveNote(
+                        id: file.name,
+                        url: url,
+                        createdAt: parseDate(file.createdAt),
+                        isFromMe: true
+                    )
+                )
+            }
+        }
+
+        if let partnerFiles = try? await client.storage.from("notes").list(path: partnerId.uuidString) {
+            for file in partnerFiles where file.name.hasSuffix(".png") {
+                let url = try client.storage.from("notes").getPublicURL(path: "\(partnerId.uuidString)/\(file.name)")
+                notes.append(
+                    ArchiveNote(
+                        id: file.name,
+                        url: url,
+                        createdAt: parseDate(file.createdAt),
+                        isFromMe: false
+                    )
+                )
+            }
+        }
+
+        return notes.sorted { $0.createdAt > $1.createdAt }
+    }
 }
 
 // MARK: - DTOs (Data Transfer Objects)

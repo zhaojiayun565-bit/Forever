@@ -125,13 +125,21 @@ struct CanvasRepresentable: UIViewRepresentable {
     @Binding var canvasView: PKCanvasView
 
     func makeUIView(context: Context) -> PKCanvasView {
-        canvasView.drawingPolicy = .anyInput
-        // Default to white ink so it pops against the black background
-        canvasView.tool = PKInkingTool(.pen, color: .white, width: 5)
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
+
+        // Force the configuration on the next run loop after the view hierarchy is established
+        DispatchQueue.main.async {
+            canvasView.drawingPolicy = .anyInput
+            canvasView.tool = PKInkingTool(.pen, color: .white, width: 5)
+        }
+
         return canvasView
     }
 
-    func updateUIView(_ uiView: PKCanvasView, context: Context) {}
+    func updateUIView(_ uiView: PKCanvasView, context: Context) {
+        // Guarantee the tool and policy are preserved during any SwiftUI state changes
+        uiView.drawingPolicy = .anyInput
+        uiView.tool = PKInkingTool(.pen, color: .white, width: 5)
+    }
 }

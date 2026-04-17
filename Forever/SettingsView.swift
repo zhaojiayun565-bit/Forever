@@ -87,6 +87,16 @@ struct SettingsView: View {
                     Link("Terms of Service", destination: URL(string: "https://apple.com")!)
                     Link("Privacy Policy", destination: URL(string: "https://apple.com")!)
                 }
+
+                Section("Account Management") {
+                    Button("Sign Out") {
+                        Task {
+                            try? await SupabaseManager.shared.signOut()
+                            await state.initializeApp()
+                        }
+                    }
+                    .foregroundStyle(.red)
+                }
             }
             .navigationTitle("Settings")
             .onAppear {

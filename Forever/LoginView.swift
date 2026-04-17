@@ -22,7 +22,7 @@ struct LoginView: View {
                     .font(.system(size: 42, weight: .black, design: .rounded))
 
                 Text("Stay connected, no matter the distance.")
-                    .font(.headline.design(.rounded))
+                    .font(.system(.headline, design: .rounded))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)

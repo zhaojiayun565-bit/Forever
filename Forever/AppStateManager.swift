@@ -24,28 +24,29 @@ final class AppStateManager {
         isLoading = true
         defer { isLoading = false }
         do {
-            if await supabase.getSession() == nil {
-                print("🛜 No session found. Attempting Anonymous Sign-In...")
-                try await supabase.signIn()
+            // 1. Check if user is actually logged in
+            if await supabase.getSession() != nil {
+                // 2. Fetch or create their database profile
+                var profile = try await supabase.fetchProfile()
+                if profile == nil {
+                    print("👤 Creating new profile for authenticated user...")
+                    try await Self.createProfileWithRetries(supabase: supabase)
+                    profile = try await supabase.fetchProfile()
+                }
+
+                currentUser = profile
+                currentCouple = try await supabase.fetchCurrentCouple()
+                await loadPartnerProfile()
+                print("✅ SUCCESS: Profile loaded.")
+            } else {
+                // Not logged in. Clear state so LoginView shows.
+                currentUser = nil
+                currentCouple = nil
+                partnerProfile = nil
+                print("🔒 User is not authenticated. Awaiting login.")
             }
-
-            var profile = try await supabase.fetchProfile()
-            if profile == nil {
-                print("👤 No profile found. Creating a new one...")
-                try await Self.createProfileWithRetries(supabase: supabase)
-                profile = try await supabase.fetchProfile()
-            }
-
-            currentUser = profile
-            currentCouple = try await supabase.fetchCurrentCouple()
-            await loadPartnerProfile()
-            print("✅ SUCCESS: Profile loaded. Code is: \(profile?.pairingCode ?? "Unknown")")
-
         } catch {
-            // THIS IS THE MAGIC PART WE ARE ADDING
-            print("🚨 SUPABASE ERROR: \(error.localizedDescription)")
-            print("🚨 FULL ERROR DETAILS: \(error)")
-
+            print("🚨 INIT ERROR: \(error)")
             currentUser = nil
             currentCouple = nil
             partnerProfile = nil

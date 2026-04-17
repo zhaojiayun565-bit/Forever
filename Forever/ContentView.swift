@@ -6,23 +6,27 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            switch (state.isLoading, state.currentCouple != nil) {
-            case (true, _):
+            if state.isLoading {
                 ProgressView()
-            case (false, true):
+            } else if state.currentUser == nil {
+                // State 1: Not Logged In
+                LoginView()
+            } else if state.currentCouple == nil {
+                // State 2: Logged in, but no partner paired
+                PairingView()
+            } else {
+                // State 3: Fully paired
                 TabView {
                     HomeDashboardView()
                         .tabItem { Label("Us", systemImage: "heart.fill") }
-                    
+
                     ArchiveView()
                         .tabItem { Label("Archive", systemImage: "square.grid.2x2.fill") }
-                    
+
                     SettingsView()
                         .tabItem { Label("Me", systemImage: "person.circle.fill") }
                 }
-                .tint(.pink) // Capwords style accent
-            case (false, false):
-                PairingView()
+                .tint(.pink)
             }
         }
         .task {

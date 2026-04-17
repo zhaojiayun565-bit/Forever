@@ -35,9 +35,14 @@ final class SupabaseManager {
         }
     }
 
-    /// Anonymous sign-in for a fresh session.
-    func signIn() async throws {
-        _ = try await client.auth.signInAnonymously()
+    func signInWithApple(idToken: String, nonce: String) async throws {
+        try await client.auth.signInWithIdToken(
+            credentials: .init(provider: .apple, idToken: idToken, nonce: nonce)
+        )
+    }
+
+    func signOut() async throws {
+        try await client.auth.signOut()
     }
 
     /// Loads the profile row for the signed-in user, if it exists.

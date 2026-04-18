@@ -9,24 +9,25 @@ struct DrawingView: View {
 
     var body: some View {
         ZStack {
-            // 1. The Fake Lock Screen Background
+            // Layer 1: The solid black background
             Color.black.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // 2. The Lock Screen Header (Real-time Clock & Date)
+            // Layer 2: The UI (Clock and Date) — behind the canvas; touches pass through to the canvas
+            VStack {
                 LockScreenHeader()
                     .padding(.top, 60)
-
                 Spacer()
             }
+            .allowsHitTesting(false)
 
-            // 3. The Transparent Drawing Canvas
+            // Layer 3: The canvas — full-screen drawing surface
             CanvasRepresentable(canvasView: $canvasView)
                 .edgesIgnoringSafeArea(.all)
 
-            // 4. The Custom Blurred Toolbar
+            // Layer 4: The toolbar — on top so buttons stay tappable; spacer does not steal touches
             VStack {
                 Spacer()
+                    .allowsHitTesting(false)
 
                 HStack(spacing: 24) {
                     Button {
@@ -68,11 +69,11 @@ struct DrawingView: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 14)
                 .background(.ultraThinMaterial, in: Capsule())
-                .environment(\.colorScheme, .dark) // Forces the material to be dark
+                .environment(\.colorScheme, .dark)
                 .padding(.bottom, 40)
             }
 
-            // 5. Sending Overlay
+            // Layer 5: Sending overlay
             if isSending {
                 Color.black.opacity(0.5).ignoresSafeArea()
                 ProgressView()
@@ -80,7 +81,7 @@ struct DrawingView: View {
                     .tint(.white)
             }
         }
-        .toolbar(.hidden, for: .navigationBar) // Hide default navigation bar for full immersion
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     private func sendNote() async {

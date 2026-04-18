@@ -51,7 +51,7 @@ struct Couple: Codable, Identifiable, Hashable {
 
 // MARK: - Memory Model
 
-struct CoupleMemory: Identifiable, Equatable {
+struct CoupleMemory: Identifiable, Equatable, Hashable {
     let id: UUID
     let coupleId: UUID
     let creatorId: UUID

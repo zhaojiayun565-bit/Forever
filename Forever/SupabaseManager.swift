@@ -171,6 +171,13 @@ final class SupabaseManager {
             .execute()
     }
 
+    func deleteMemory(id: UUID) async throws {
+        try await client.from("memories")
+            .delete()
+            .eq("id", value: id)
+            .execute()
+    }
+
     /// Resolves a partner by pairing code and creates a `couples` row.
     func linkPartner(code: String) async throws -> Couple {
         let session = try await client.auth.session

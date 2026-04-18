@@ -94,6 +94,7 @@ final class SupabaseManager {
             let latitude: Double
             let longitude: Double
             let created_at: String
+            let note: String?
         }
 
         let response: [MemoryResponse] = try await client.from("memories")
@@ -115,9 +116,51 @@ final class SupabaseManager {
                 imageUrl: url,
                 latitude: mem.latitude,
                 longitude: mem.longitude,
-                createdAt: date
+                createdAt: date,
+                note: mem.note
             )
         }
+    }
+
+    func uploadMemoryImage(data: Data, coupleId: UUID) async throws -> URL {
+        let fileName = "\(coupleId.uuidString)/memories/\(UUID().uuidString).jpg"
+        try await client.storage
+            .from("notes")
+            .upload(
+                fileName,
+                data: data,
+                options: FileOptions(contentType: "image/jpeg")
+            )
+        return try client.storage.from("notes").getPublicURL(path: fileName)
+    }
+
+    func insertMemory(coupleId: UUID, creatorId: UUID, imageUrl: URL, lat: Double, lng: Double, date: Date, note: String) async throws {
+        struct InsertMemory: Encodable, Sendable {
+            let couple_id: UUID
+            let creator_id: UUID
+            let image_url: String
+            let latitude: Double
+            let longitude: Double
+            let created_at: String
+            let note: String
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        let payload = InsertMemory(
+            couple_id: coupleId,
+            creator_id: creatorId,
+            image_url: imageUrl.absoluteString,
+            latitude: lat,
+            longitude: lng,
+            created_at: formatter.string(from: date),
+            note: note
+        )
+
+        try await client.from("memories")
+            .insert(payload)
+            .execute()
     }
 
     /// Resolves a partner by pairing code and creates a `couples` row.

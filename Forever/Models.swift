@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 
 // MARK: - Profile Model
@@ -45,6 +46,22 @@ struct Couple: Codable, Identifiable, Hashable {
         case user1Id = "user1_id"
         case user2Id = "user2_id"
         case createdAt = "created_at"
+    }
+}
+
+// MARK: - Memory Model
+
+struct CoupleMemory: Identifiable, Equatable {
+    let id: UUID
+    let coupleId: UUID
+    let creatorId: UUID
+    let imageUrl: URL
+    let latitude: Double
+    let longitude: Double
+    let createdAt: Date
+
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 }
 

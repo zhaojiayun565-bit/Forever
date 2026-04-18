@@ -20,6 +20,9 @@ struct ContentView: View {
                     HomeDashboardView()
                         .tabItem { Label("Us", systemImage: "heart.fill") }
 
+                    MapDashboardView()
+                        .tabItem { Label("Map", systemImage: "map.fill") }
+
                     ArchiveView()
                         .tabItem { Label("Archive", systemImage: "square.grid.2x2.fill") }
 

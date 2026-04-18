@@ -9,43 +9,35 @@ struct DrawingView: View {
 
     var body: some View {
         ZStack {
-            // 1. The Fake Lock Screen Background
-            Color.black.ignoresSafeArea()
+            // 1. The Canvas is now the BACK layer, and it is purely BLACK and OPAQUE.
+            // This forces the physical iPhone GPU to perfectly render the white ink.
+            CanvasRepresentable(canvasView: $canvasView)
+                .ignoresSafeArea()
 
+            // 2. The Clock is moved ON TOP of the canvas so we can see it.
             VStack(spacing: 0) {
-                // 2. The Lock Screen Header (Real-time Clock & Date)
                 LockScreenHeader()
                     .padding(.top, 60)
-
                 Spacer()
             }
+            // CRITICAL: Let touches pass right through the clock down to the canvas
+            .allowsHitTesting(false)
 
-            // 3. The Transparent Drawing Canvas
-            CanvasRepresentable(canvasView: $canvasView)
-                .edgesIgnoringSafeArea(.all)
-
-            // 4. The Custom Blurred Toolbar
+            // 3. The Toolbar stays on top and clickable
             VStack {
                 Spacer()
-
                 HStack(spacing: 24) {
                     Button {
                         canvasView.drawing = PKDrawing()
                     } label: {
-                        Image(systemName: "trash")
-                            .font(.title2)
-                            .foregroundColor(.white)
-                    }
-                    .disabled(isSending)
+                        Image(systemName: "trash").font(.title2).foregroundColor(.white)
+                    }.disabled(isSending)
 
                     Button {
                         canvasView.undoManager?.undo()
                     } label: {
-                        Image(systemName: "arrow.uturn.backward")
-                            .font(.title2)
-                            .foregroundColor(.white)
-                    }
-                    .disabled(isSending)
+                        Image(systemName: "arrow.uturn.backward").font(.title2).foregroundColor(.white)
+                    }.disabled(isSending)
 
                     Button {
                         Task { await sendNote() }
@@ -53,49 +45,41 @@ struct DrawingView: View {
                         HStack {
                             Text(isSending ? "Sending..." : "Send")
                                 .fontWeight(.bold)
-                            if !isSending {
-                                Image(systemName: "paperplane.fill")
-                            }
+                            if !isSending { Image(systemName: "paperplane.fill") }
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
                         .background(Color.white)
                         .foregroundColor(.black)
                         .clipShape(Capsule())
-                    }
-                    .disabled(isSending)
+                    }.disabled(isSending)
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 14)
                 .background(.ultraThinMaterial, in: Capsule())
-                .environment(\.colorScheme, .dark) // Forces the material to be dark
+                .environment(\.colorScheme, .dark)
                 .padding(.bottom, 40)
             }
 
-            // 5. Sending Overlay
             if isSending {
                 Color.black.opacity(0.5).ignoresSafeArea()
-                ProgressView()
-                    .scaleEffect(1.5)
-                    .tint(.white)
+                ProgressView().scaleEffect(1.5).tint(.white)
             }
         }
-        .toolbar(.hidden, for: .navigationBar) // Hide default navigation bar for full immersion
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     private func sendNote() async {
         isSending = true
         defer { isSending = false }
 
-        // Export with transparent background for Lock Screen widget template mask
+        // This seamlessly extracts the strokes on a transparent background, ignoring the solid black canvas!
         let image = canvasView.drawing.image(from: canvasView.bounds, scale: 2.0)
-
         guard let data = image.pngData() else { return }
 
         do {
             let url = try await SupabaseManager.shared.uploadNoteImage(data: data)
             try await SupabaseManager.shared.updateLatestNoteUrl(url: url)
-
             canvasView.drawing = PKDrawing()
             dismiss()
         } catch {
@@ -112,7 +96,6 @@ struct LockScreenHeader: View {
                     .font(.system(.title3, design: .default, weight: .semibold))
                     .foregroundColor(.white.opacity(0.9))
 
-                // To mimic the exact iOS lock screen clock font
                 Text(context.date.formatted(.dateTime.hour().minute()))
                     .font(.system(size: 80, weight: .heavy, design: .rounded))
                     .foregroundColor(.white)
@@ -125,13 +108,18 @@ struct CanvasRepresentable: UIViewRepresentable {
     @Binding var canvasView: PKCanvasView
 
     func makeUIView(context: Context) -> PKCanvasView {
+        // THE FIX: Solid black and opaque guarantees rendering on physical devices
+        canvasView.backgroundColor = .black
+        canvasView.isOpaque = true
+
         canvasView.drawingPolicy = .anyInput
-        // Default to white ink so it pops against the black background
-        canvasView.tool = PKInkingTool(.pen, color: .white, width: 6)
-        canvasView.backgroundColor = .clear
-        canvasView.isOpaque = false
+        canvasView.tool = PKInkingTool(.pen, color: .white, width: 5)
         return canvasView
     }
 
-    func updateUIView(_ uiView: PKCanvasView, context: Context) {}
+    func updateUIView(_ uiView: PKCanvasView, context: Context) {
+        // Re-enforce tool and policy in case of SwiftUI re-renders
+        uiView.drawingPolicy = .anyInput
+        uiView.tool = PKInkingTool(.pen, color: .white, width: 5)
+    }
 }

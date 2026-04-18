@@ -13,6 +13,7 @@ final class AppStateManager {
     var currentUser: Profile?
     var currentCouple: Couple?
     var partnerProfile: Profile?
+    var memories: [CoupleMemory] = []
     var isLoading = true
 
     init(supabase: SupabaseManager = .shared) {
@@ -72,6 +73,15 @@ final class AppStateManager {
             self.updateWidgetData(partner: partner)
         } catch {
             print("🚨 Failed to fetch partner profile: \(error)")
+        }
+    }
+
+    func loadMemories() async {
+        guard let coupleId = currentCouple?.id else { return }
+        do {
+            memories = try await supabase.fetchMemories(coupleId: coupleId)
+        } catch {
+            print("🚨 Failed to load memories: \(error)")
         }
     }
 

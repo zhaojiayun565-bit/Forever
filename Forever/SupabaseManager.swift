@@ -85,6 +85,41 @@ final class SupabaseManager {
         return asUser2.first
     }
 
+    func fetchMemories(coupleId: UUID) async throws -> [CoupleMemory] {
+        struct MemoryResponse: Decodable {
+            let id: UUID
+            let couple_id: UUID
+            let creator_id: UUID
+            let image_url: String
+            let latitude: Double
+            let longitude: Double
+            let created_at: String
+        }
+
+        let response: [MemoryResponse] = try await client.from("memories")
+            .select()
+            .eq("couple_id", value: coupleId)
+            .execute()
+            .value
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        return response.compactMap { mem in
+            guard let url = URL(string: mem.image_url) else { return nil }
+            let date = formatter.date(from: mem.created_at) ?? Date()
+            return CoupleMemory(
+                id: mem.id,
+                coupleId: mem.couple_id,
+                creatorId: mem.creator_id,
+                imageUrl: url,
+                latitude: mem.latitude,
+                longitude: mem.longitude,
+                createdAt: date
+            )
+        }
+    }
+
     /// Resolves a partner by pairing code and creates a `couples` row.
     func linkPartner(code: String) async throws -> Couple {
         let session = try await client.auth.session

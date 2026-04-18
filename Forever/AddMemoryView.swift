@@ -7,10 +7,15 @@ struct AddMemoryView: View {
     @Environment(AppStateManager.self) private var state
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedItem: PhotosPickerItem?
-    @State private var selectedImage: UIImage?
+    @State private var selectedItems: [PhotosPickerItem] = []
+    @State private var selectedImages: [UIImage] = []
+
     @State private var date = Date()
+    @State private var showDatePickerSheet = false
+
     @State private var coordinate: CLLocationCoordinate2D?
+    @State private var locationName: String?
+
     @State private var note = ""
     @State private var isSaving = false
 
@@ -18,53 +23,54 @@ struct AddMemoryView: View {
         NavigationStack {
             Form {
                 Section {
-                    PhotosPicker(selection: $selectedItem, matching: .images) {
-                        if let selectedImage {
-                            Image(uiImage: selectedImage)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(height: 250)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            PhotosPicker(selection: $selectedItems, maxSelectionCount: 10, matching: .images) {
+                                VStack {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 24, weight: .bold))
+                                }
+                                .frame(width: 100, height: 100)
+                                .foregroundStyle(.pink)
+                                .background(Color.pink.opacity(0.1))
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .listRowInsets(EdgeInsets())
-                        } else {
-                            VStack(spacing: 12) {
-                                Image(systemName: "photo.badge.plus")
-                                    .font(.system(size: 40))
-                                Text("Add a Photo")
-                                    .font(.headline)
                             }
-                            .frame(maxWidth: .infinity, minHeight: 200)
-                            .foregroundStyle(.pink)
-                            .background(Color.pink.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
-                    }
-                    .onChange(of: selectedItem) { _, newItem in
-                        Task {
-                            guard let newItem else { return }
-                            if let data = try? await newItem.loadTransferable(type: Data.self),
-                               let image = UIImage(data: data) {
-                                selectedImage = image
+                            .onChange(of: selectedItems) { _, items in
+                                Task { await loadImages(from: items) }
+                            }
+
+                            ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, img in
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 100, height: 100)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
                         }
+                        .padding(.vertical, 8)
                     }
+                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 0))
+                    .listRowBackground(Color.clear)
                 }
-                .listRowBackground(Color.clear)
 
                 Section {
-                    DatePicker("Date", selection: $date, displayedComponents: .date)
+                    HStack {
+                        Text("Date")
+                        Spacer()
+                        Text(date.formatted(date: .abbreviated, time: .omitted))
+                            .foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { showDatePickerSheet = true }
 
                     NavigationLink {
-                        LocationPickerView(selectedCoordinate: $coordinate)
+                        LocationPickerView(selectedCoordinate: $coordinate, locationName: $locationName)
                     } label: {
                         HStack {
                             Text("Location")
                             Spacer()
-                            if coordinate != nil {
-                                Text("Selected").foregroundStyle(.secondary)
-                            } else {
-                                Text("Choose").foregroundStyle(.pink)
-                            }
+                            Text(locationName ?? "Choose")
+                                .foregroundStyle(locationName != nil ? Color.secondary : Color.pink)
                         }
                     }
 
@@ -74,16 +80,42 @@ struct AddMemoryView: View {
             }
             .navigationTitle("New Memory")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showDatePickerSheet) {
+                NavigationStack {
+                    DatePicker("", selection: $date, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                        .padding()
+                        .onChange(of: date) { _, _ in
+                            showDatePickerSheet = false
+                        }
+                        .frame(maxWidth: .infinity, alignment: .top)
+                        .navigationTitle("Date")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cancel") { showDatePickerSheet = false }
+                            }
+                        }
+                }
+                .presentationDetents([.medium, .large])
+            }
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text("Back")
+                        }
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task { await saveMemory() }
                     }
                     .fontWeight(.bold)
-                    .disabled(selectedImage == nil || coordinate == nil || isSaving)
+                    .disabled(selectedImages.isEmpty || coordinate == nil || isSaving)
                 }
             }
             .overlay {
@@ -92,7 +124,7 @@ struct AddMemoryView: View {
                         Color.black.opacity(0.4).ignoresSafeArea()
                         ProgressView("Saving...")
                             .padding()
-                            .background(Color(uiColor: .secondarySystemBackground))
+                            .background(Color(uiColor: .systemBackground))
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                 }
@@ -100,23 +132,37 @@ struct AddMemoryView: View {
         }
     }
 
+    private func loadImages(from items: [PhotosPickerItem]) async {
+        var loaded: [UIImage] = []
+        for item in items {
+            if let data = try? await item.loadTransferable(type: Data.self), let uiImage = UIImage(data: data) {
+                loaded.append(uiImage)
+            }
+        }
+        selectedImages = loaded
+    }
+
     private func saveMemory() async {
-        guard let image = selectedImage,
-              let data = image.jpegData(compressionQuality: 0.8),
-              let lat = coordinate?.latitude,
-              let lng = coordinate?.longitude,
-              let coupleId = state.currentCouple?.id,
-              let creatorId = state.currentUser?.id else { return }
+        guard let lat = coordinate?.latitude, let lng = coordinate?.longitude,
+              let coupleId = state.currentCouple?.id, let creatorId = state.currentUser?.id else { return }
 
         isSaving = true
         defer { isSaving = false }
 
         do {
-            let url = try await SupabaseManager.shared.uploadMemoryImage(data: data, coupleId: coupleId)
+            var uploadedUrls: [URL] = []
+            for image in selectedImages {
+                if let data = image.jpegData(compressionQuality: 0.8) {
+                    let url = try await SupabaseManager.shared.uploadMemoryImage(data: data, coupleId: coupleId)
+                    uploadedUrls.append(url)
+                }
+            }
+            guard !uploadedUrls.isEmpty else { return }
+
             try await SupabaseManager.shared.insertMemory(
                 coupleId: coupleId,
                 creatorId: creatorId,
-                imageUrl: url,
+                imageUrls: uploadedUrls,
                 lat: lat,
                 lng: lng,
                 date: date,

@@ -11,7 +11,7 @@ struct MapDashboardView: View {
                 Map {
                     ForEach(state.memories) { memory in
                         Annotation("", coordinate: memory.coordinate) {
-                            AsyncImage(url: memory.imageUrl) { phase in
+                            AsyncImage(url: memory.imageUrls.first) { phase in
                                 if let image = phase.image {
                                     image
                                         .resizable()
@@ -48,7 +48,7 @@ struct MapDashboardView: View {
             .task {
                 await state.loadMemories()
             }
-            .sheet(isPresented: $showingAddMemory) {
+            .fullScreenCover(isPresented: $showingAddMemory) {
                 AddMemoryView()
                     .environment(state)
             }

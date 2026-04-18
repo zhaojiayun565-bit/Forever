@@ -90,7 +90,8 @@ final class SupabaseManager {
             let id: UUID
             let couple_id: UUID
             let creator_id: UUID
-            let image_url: String
+            let image_urls: [String]?
+            let image_url: String?
             let latitude: Double
             let longitude: Double
             let created_at: String
@@ -107,13 +108,20 @@ final class SupabaseManager {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
         return response.compactMap { mem in
-            guard let url = URL(string: mem.image_url) else { return nil }
+            var urls: [URL] = []
+            if let arr = mem.image_urls {
+                urls = arr.compactMap { URL(string: $0) }
+            }
+            if urls.isEmpty, let single = mem.image_url, let url = URL(string: single) {
+                urls = [url]
+            }
+            guard !urls.isEmpty else { return nil }
             let date = formatter.date(from: mem.created_at) ?? Date()
             return CoupleMemory(
                 id: mem.id,
                 coupleId: mem.couple_id,
                 creatorId: mem.creator_id,
-                imageUrl: url,
+                imageUrls: urls,
                 latitude: mem.latitude,
                 longitude: mem.longitude,
                 createdAt: date,
@@ -134,11 +142,11 @@ final class SupabaseManager {
         return try client.storage.from("notes").getPublicURL(path: fileName)
     }
 
-    func insertMemory(coupleId: UUID, creatorId: UUID, imageUrl: URL, lat: Double, lng: Double, date: Date, note: String) async throws {
+    func insertMemory(coupleId: UUID, creatorId: UUID, imageUrls: [URL], lat: Double, lng: Double, date: Date, note: String) async throws {
         struct InsertMemory: Encodable, Sendable {
             let couple_id: UUID
             let creator_id: UUID
-            let image_url: String
+            let image_urls: [String]
             let latitude: Double
             let longitude: Double
             let created_at: String
@@ -151,7 +159,7 @@ final class SupabaseManager {
         let payload = InsertMemory(
             couple_id: coupleId,
             creator_id: creatorId,
-            image_url: imageUrl.absoluteString,
+            image_urls: imageUrls.map(\.absoluteString),
             latitude: lat,
             longitude: lng,
             created_at: formatter.string(from: date),

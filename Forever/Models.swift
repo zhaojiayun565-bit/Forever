@@ -55,7 +55,7 @@ struct CoupleMemory: Identifiable, Equatable {
     let id: UUID
     let coupleId: UUID
     let creatorId: UUID
-    let imageUrl: URL
+    let imageUrls: [URL]
     let latitude: Double
     let longitude: Double
     let createdAt: Date

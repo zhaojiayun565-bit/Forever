@@ -9,25 +9,24 @@ struct DrawingView: View {
 
     var body: some View {
         ZStack {
-            // Layer 1: The solid black background
+            // 1. The Fake Lock Screen Background
             Color.black.ignoresSafeArea()
 
-            // Layer 2: The UI (Clock and Date) — behind the canvas; touches pass through to the canvas
-            VStack {
+            VStack(spacing: 0) {
+                // 2. The Lock Screen Header (Real-time Clock & Date)
                 LockScreenHeader()
                     .padding(.top, 60)
+
                 Spacer()
             }
-            .allowsHitTesting(false)
 
-            // Layer 3: The canvas — full-screen drawing surface
+            // 3. The Transparent Drawing Canvas
             CanvasRepresentable(canvasView: $canvasView)
                 .edgesIgnoringSafeArea(.all)
 
-            // Layer 4: The toolbar — on top so buttons stay tappable; spacer does not steal touches
+            // 4. The Custom Blurred Toolbar
             VStack {
                 Spacer()
-                    .allowsHitTesting(false)
 
                 HStack(spacing: 24) {
                     Button {
@@ -69,11 +68,11 @@ struct DrawingView: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 14)
                 .background(.ultraThinMaterial, in: Capsule())
-                .environment(\.colorScheme, .dark)
+                .environment(\.colorScheme, .dark) // Forces the material to be dark
                 .padding(.bottom, 40)
             }
 
-            // Layer 5: Sending overlay
+            // 5. Sending Overlay
             if isSending {
                 Color.black.opacity(0.5).ignoresSafeArea()
                 ProgressView()
@@ -81,7 +80,7 @@ struct DrawingView: View {
                     .tint(.white)
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar) // Hide default navigation bar for full immersion
     }
 
     private func sendNote() async {
@@ -126,21 +125,13 @@ struct CanvasRepresentable: UIViewRepresentable {
     @Binding var canvasView: PKCanvasView
 
     func makeUIView(context: Context) -> PKCanvasView {
+        canvasView.drawingPolicy = .anyInput
+        // Default to white ink so it pops against the black background
+        canvasView.tool = PKInkingTool(.pen, color: .white, width: 6)
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
-
-        // Force the configuration on the next run loop after the view hierarchy is established
-        DispatchQueue.main.async {
-            canvasView.drawingPolicy = .anyInput
-            canvasView.tool = PKInkingTool(.pen, color: .white, width: 5)
-        }
-
         return canvasView
     }
 
-    func updateUIView(_ uiView: PKCanvasView, context: Context) {
-        // Guarantee the tool and policy are preserved during any SwiftUI state changes
-        uiView.drawingPolicy = .anyInput
-        uiView.tool = PKInkingTool(.pen, color: .white, width: 5)
-    }
+    func updateUIView(_ uiView: PKCanvasView, context: Context) {}
 }

@@ -74,10 +74,3 @@ extension Couple {
         createdAt: Date()
     )
 }
-
-struct ArchiveNote: Identifiable, Equatable {
-    let id: String
-    let url: URL
-    let createdAt: Date
-    let isFromMe: Bool
-}

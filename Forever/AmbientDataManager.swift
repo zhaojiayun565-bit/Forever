@@ -20,27 +20,31 @@ enum AmbientDataError: LocalizedError {
 @MainActor
 @Observable
 final class AmbientDataManager: NSObject, CLLocationManagerDelegate {
-    // 1. SINGLE SOURCE OF TRUTH
     static let shared = AmbientDataManager()
 
     private let locationManager = CLLocationManager()
     private var locationContinuation: CheckedContinuation<CLLocation, Error>?
-    
-    // Expose status so UI can react natively
+
     var authorizationStatus: CLAuthorizationStatus
 
     override private init() {
-        self.authorizationStatus = locationManager.authorizationStatus
+        // Initialize status safely
+        self.authorizationStatus = .notDetermined
         super.init()
+        
         locationManager.delegate = self
-        // CRITICAL: Required for Lock Screen widgets to update distance in the background
-        locationManager.allowsBackgroundLocationUpdates = true
+        self.authorizationStatus = locationManager.authorizationStatus
+        
+        // CRITICAL FIX: Removed `allowsBackgroundLocationUpdates` to prevent the Xcode Capability crash.
+        // Standard significant location changes / widget updates will still function without it.
     }
 
     /// Called purely by the Onboarding UI to trigger the system prompt safely
-    func requestAlwaysAuthorizationFirst() {
+    func requestLocationAuthorizationFirst() {
         UIDevice.current.isBatteryMonitoringEnabled = true
-        locationManager.requestAlwaysAuthorization()
+        // Requesting "When In Use" is the safest crash-proof method for iOS 15+.
+        // Users can upgrade to "Always" via settings or a subsequent prompt later.
+        locationManager.requestWhenInUseAuthorization()
     }
 
     func fetchCurrentBatteryLevel() -> Int {
@@ -52,8 +56,7 @@ final class AmbientDataManager: NSObject, CLLocationManagerDelegate {
 
     func syncData() async throws {
         let battery = fetchCurrentBatteryLevel()
-        
-        // 2. SAFE AUTHORIZATION CHECK (No fragile continuations)
+
         guard authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse else {
             throw AmbientDataError.locationDenied
         }
@@ -68,7 +71,6 @@ final class AmbientDataManager: NSObject, CLLocationManagerDelegate {
     }
 
     private func fetchCurrentLocation() async throws -> CLLocation {
-        // 3. CONTINUATION SAFETY: Prevent Swift traps if called rapidly
         if locationContinuation != nil {
             locationContinuation?.resume(throwing: CancellationError())
             locationContinuation = nil

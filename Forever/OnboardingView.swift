@@ -163,8 +163,7 @@ struct FeatureCarouselView: View {
                     description: "See exactly how far apart you are directly on your Lock Screen.",
                     buttonTitle: "Enable Location",
                     buttonAction: {
-                        // Use the unified Singleton
-                        AmbientDataManager.shared.requestAlwaysAuthorizationFirst()
+                        AmbientDataManager.shared.requestLocationAuthorizationFirst()
 
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                             withAnimation { tab = 2 }

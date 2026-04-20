@@ -2,11 +2,16 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppStateManager.self) private var state
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @Environment(\.scenePhase) var scenePhase
 
     var body: some View {
         Group {
-            if state.isLoading {
+            if !hasCompletedOnboarding {
+                // State 0: App Store Onboarding
+                OnboardingView()
+            } else if state.isLoading {
+                // Loading State
                 ProgressView()
             } else if state.currentUser == nil {
                 // State 1: Not Logged In

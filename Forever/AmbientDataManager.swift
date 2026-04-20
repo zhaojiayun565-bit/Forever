@@ -17,26 +17,32 @@ enum AmbientDataError: LocalizedError {
     }
 }
 
-/// Location and battery sampling for Supabase / widgets.
 @MainActor
 @Observable
-final class AmbientDataManager: NSObject {
+final class AmbientDataManager: NSObject, CLLocationManagerDelegate {
+    // 1. SINGLE SOURCE OF TRUTH
+    static let shared = AmbientDataManager()
+
     private let locationManager = CLLocationManager()
     private var locationContinuation: CheckedContinuation<CLLocation, Error>?
-    private var authorizationContinuation: CheckedContinuation<Void, Error>?
+    
+    // Expose status so UI can react natively
+    var authorizationStatus: CLAuthorizationStatus
 
-    override init() {
+    override private init() {
+        self.authorizationStatus = locationManager.authorizationStatus
         super.init()
         locationManager.delegate = self
+        // CRITICAL: Required for Lock Screen widgets to update distance in the background
+        locationManager.allowsBackgroundLocationUpdates = true
     }
 
-    /// Enables battery monitoring and requests When In Use location authorization (call early, e.g. after sign-in).
-    func requestWhenInUseAuthorizationFirst() {
+    /// Called purely by the Onboarding UI to trigger the system prompt safely
+    func requestAlwaysAuthorizationFirst() {
         UIDevice.current.isBatteryMonitoringEnabled = true
-        locationManager.requestWhenInUseAuthorization()
+        locationManager.requestAlwaysAuthorization()
     }
 
-    /// Returns battery charge 0–100; turns on monitoring if needed.
     func fetchCurrentBatteryLevel() -> Int {
         UIDevice.current.isBatteryMonitoringEnabled = true
         let raw = UIDevice.current.batteryLevel
@@ -44,11 +50,16 @@ final class AmbientDataManager: NSObject {
         return Int((raw * 100).rounded(.toNearestOrAwayFromZero))
     }
 
-    /// Samples GPS + battery and writes to the current user's profile.
     func syncData() async throws {
         let battery = fetchCurrentBatteryLevel()
-        try await ensureLocationAuthorized()
+        
+        // 2. SAFE AUTHORIZATION CHECK (No fragile continuations)
+        guard authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse else {
+            throw AmbientDataError.locationDenied
+        }
+        
         let location = try await fetchCurrentLocation()
+        
         try await SupabaseManager.shared.updateAmbientData(
             latitude: location.coordinate.latitude,
             longitude: location.coordinate.longitude,
@@ -56,86 +67,50 @@ final class AmbientDataManager: NSObject {
         )
     }
 
-    private func ensureLocationAuthorized() async throws {
-        switch locationManager.authorizationStatus {
-        case .notDetermined:
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                authorizationContinuation = continuation
-                locationManager.requestWhenInUseAuthorization()
-            }
-        case .authorizedAlways, .authorizedWhenInUse:
-            return
-        case .denied, .restricted:
-            throw AmbientDataError.locationDenied
-        @unknown default:
-            throw AmbientDataError.locationServicesUnavailable
-        }
-    }
-
     private func fetchCurrentLocation() async throws -> CLLocation {
-        try await withCheckedThrowingContinuation { continuation in
+        // 3. CONTINUATION SAFETY: Prevent Swift traps if called rapidly
+        if locationContinuation != nil {
+            locationContinuation?.resume(throwing: CancellationError())
+            locationContinuation = nil
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
             locationContinuation = continuation
             locationManager.requestLocation()
         }
     }
 
-    @MainActor
-    private func resumeAuthorization(_ result: Result<Void, Error>) {
-        guard let cont = authorizationContinuation else { return }
-        authorizationContinuation = nil
-        cont.resume(with: result)
-    }
-
-    @MainActor
-    private func resumeLocation(_ result: Result<CLLocation, Error>) {
-        guard let cont = locationContinuation else { return }
-        locationContinuation = nil
-        cont.resume(with: result)
-    }
-
-    @MainActor
-    private static func mapLocationFailure(_ error: Error) -> Error {
-        let ns = error as NSError
-        if ns.domain == kCLErrorDomain, ns.code == CLError.denied.rawValue {
-            return AmbientDataError.locationDenied
-        }
-        if ns.domain == kCLErrorDomain, ns.code == CLError.locationUnknown.rawValue {
-            return AmbientDataError.locationUnknown
-        }
-        return error
-    }
-}
-
-extension AmbientDataManager: CLLocationManagerDelegate {
+    // MARK: - Delegate
+    
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
-            let status = manager.authorizationStatus
-            switch status {
-            case .authorizedAlways, .authorizedWhenInUse:
-                resumeAuthorization(.success(()))
-            case .denied, .restricted:
-                resumeAuthorization(.failure(AmbientDataError.locationDenied))
-            case .notDetermined:
-                break
-            @unknown default:
-                resumeAuthorization(.failure(AmbientDataError.locationServicesUnavailable))
-            }
+            self.authorizationStatus = manager.authorizationStatus
         }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         Task { @MainActor in
             guard let loc = locations.last else {
-                resumeLocation(.failure(AmbientDataError.locationUnknown))
+                locationContinuation?.resume(throwing: AmbientDataError.locationUnknown)
+                locationContinuation = nil
                 return
             }
-            resumeLocation(.success(loc))
+            locationContinuation?.resume(returning: loc)
+            locationContinuation = nil
         }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Task { @MainActor in
-            resumeLocation(.failure(Self.mapLocationFailure(error)))
+            let ns = error as NSError
+            var mappedError: Error = error
+            if ns.domain == kCLErrorDomain {
+                if ns.code == CLError.denied.rawValue { mappedError = AmbientDataError.locationDenied }
+                if ns.code == CLError.locationUnknown.rawValue { mappedError = AmbientDataError.locationUnknown }
+            }
+            
+            locationContinuation?.resume(throwing: mappedError)
+            locationContinuation = nil
         }
     }
 }

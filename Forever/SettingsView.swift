@@ -20,6 +20,7 @@ struct SettingsView: View {
     @State private var displayName = ""
     @State private var anniversary = Date()
     @State private var isSaving = false
+    @State private var isShowingUnpairAlert = false
     @AppStorage("distanceUnit") private var distanceUnit = DistanceUnitOption.miles.rawValue
 
     private var normalizedDistanceUnit: String {
@@ -97,8 +98,29 @@ struct SettingsView: View {
                     }
                     .foregroundStyle(.red)
                 }
+
+                Section("Danger Zone") {
+                    Button(role: .destructive) {
+                        isShowingUnpairAlert = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "heart.slash.fill")
+                            Text("Unpair from Partner")
+                        }
+                    }
+                }
             }
             .navigationTitle("Settings")
+            .alert("Unpair from Partner?", isPresented: $isShowingUnpairAlert) {
+                Button("Cancel", role: .cancel) {}
+                Button("Unpair", role: .destructive) {
+                    Task {
+                        await state.unpair()
+                    }
+                }
+            } message: {
+                Text("This will permanently sever your connection. All shared memories, map pins, and drawings will be deleted for both of you. This cannot be undone.")
+            }
             .onAppear {
                 if let name = state.currentUser?.displayName { displayName = name }
                 if let date = state.currentUser?.anniversaryDate { anniversary = date }

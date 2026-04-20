@@ -178,6 +178,28 @@ final class AppStateManager {
         currentCouple = try await supabase.linkPartner(code: code)
     }
 
+    /// Deletes the relationship row and clears local pairing state.
+    func unpair() async {
+        guard let coupleId = currentCouple?.id else { return }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            // Delete the couple connection in Supabase first.
+            try await supabase.deleteCouple(id: coupleId)
+
+            // Reset local state so routing returns to pairing flow.
+            currentCouple = nil
+            partnerProfile = nil
+            memories = []
+
+            print("✅ Successfully unpaired. UI should now route to PairingView.")
+        } catch {
+            print("🚨 Failed to unpair: \(error)")
+        }
+    }
+
     private static func randomSixDigitCode() -> String {
         String(format: "%06d", Int.random(in: 0 ... 999_999))
     }

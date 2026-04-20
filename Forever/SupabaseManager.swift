@@ -185,6 +185,15 @@ final class SupabaseManager {
             .execute()
     }
 
+    /// Deletes the couple row to unpair both users.
+    func deleteCouple(id: UUID) async throws {
+        try await client.database
+            .from(DB.couples)
+            .delete()
+            .eq("id", value: id)
+            .execute()
+    }
+
     /// Resolves a partner by pairing code and creates a `couples` row.
     func linkPartner(code: String) async throws -> Couple {
         let session = try await client.auth.session

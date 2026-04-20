@@ -26,10 +26,9 @@ struct OnboardingView: View {
                     .tint(.pink)
                     .padding(.horizontal, 40)
                     .padding(.top, 20)
+                    .padding(.bottom, 40) // THE FIX: Replaces the top Spacer() to permanently top-align the content!
 
-                Spacer()
-
-                // View Router with smooth lateral transitions
+                // View Router
                 switch currentStep {
                 case .myName:
                     NameInputView(title: "What's your name?", name: $myName, action: advance)
@@ -52,14 +51,17 @@ struct OnboardingView: View {
                     }
                     .transition(.asymmetric(insertion: .move(edge: .bottom), removal: .opacity))
                 }
-
-                Spacer()
+                
+                Spacer() // Keep the bottom spacer to push everything firmly to the top
             }
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: currentStep)
     }
 
     private func advance() {
+        // Explicitly dismiss the keyboard to ensure smooth transitions to non-text screens
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
         guard let next = OnboardingStep(rawValue: currentStep.rawValue + 1) else { return }
         currentStep = next
     }
@@ -77,6 +79,9 @@ struct NameInputView: View {
     let title: String
     @Binding var name: String
     let action: () -> Void
+    
+    // THE FIX: Native SwiftUI Focus State
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         VStack(spacing: 30) {
@@ -91,6 +96,11 @@ struct NameInputView: View {
                 .background(Color(UIColor.secondarySystemBackground))
                 .cornerRadius(16)
                 .padding(.horizontal, 40)
+                .focused($isFocused) // Bind focus state
+                .submitLabel(.continue) // Changes "Return" key to "Continue"
+                .onSubmit { // Allows user to just hit the keyboard button to advance!
+                    if !name.isEmpty { action() }
+                }
 
             Button(action: action) {
                 Text("Continue")
@@ -103,6 +113,12 @@ struct NameInputView: View {
             }
             .disabled(name.isEmpty)
             .padding(.horizontal, 40)
+        }
+        .onAppear {
+            // 0.5s delay guarantees the lateral slide animation finishes BEFORE the keyboard fires up
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                isFocused = true
+            }
         }
     }
 }

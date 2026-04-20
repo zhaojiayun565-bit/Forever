@@ -1,22 +1,24 @@
-import Combine
 import Foundation
 import MapKit
+import Observation
 
 /// Wraps `MKLocalSearchCompleter` for place autocomplete.
-final class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
-    @Published var searchQuery = ""
-    @Published var completions: [MKLocalSearchCompletion] = []
+@Observable
+class LocationSearchService: NSObject, MKLocalSearchCompleterDelegate {
+    var searchQuery = "" {
+        didSet {
+            completer.queryFragment = searchQuery
+        }
+    }
+    var completions: [MKLocalSearchCompletion] = []
 
     private let completer: MKLocalSearchCompleter
-    private var cancellable: AnyCancellable?
 
     override init() {
         completer = MKLocalSearchCompleter()
         completer.resultTypes = [.address, .pointOfInterest]
         super.init()
         completer.delegate = self
-
-        cancellable = $searchQuery.assign(to: \.queryFragment, on: completer)
     }
 
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {

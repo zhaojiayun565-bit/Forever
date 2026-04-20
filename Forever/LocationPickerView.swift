@@ -8,7 +8,7 @@ struct LocationPickerView: View {
     @Binding var locationName: String?
     @Environment(\.dismiss) private var dismiss
 
-    @StateObject private var searchService = LocationSearchService()
+    @State private var searchService = LocationSearchService()
     @State private var position: MapCameraPosition = .automatic
     @State private var currentCenter: CLLocationCoordinate2D?
     @State private var isSearching = false

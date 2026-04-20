@@ -1,6 +1,13 @@
 import Foundation
 import Supabase
 
+enum DB {
+    static let profiles = "profiles"
+    static let couples = "couples"
+    static let memories = "memories"
+    static let notesBucket = "notes"
+}
+
 enum PairingError: LocalizedError {
     case emptyCode
     case partnerNotFound
@@ -48,7 +55,7 @@ final class SupabaseManager {
     /// Loads the profile row for the signed-in user, if it exists.
     func fetchProfile() async throws -> Profile? {
         let session = try await client.auth.session
-        let rows: [Profile] = try await client.from("profiles")
+        let rows: [Profile] = try await client.from(DB.profiles)
             .select()
             .eq("id", value: session.user.id)
             .limit(1)
@@ -60,7 +67,7 @@ final class SupabaseManager {
     /// Inserts a profile for the current user with the given pairing code.
     func createProfile(code: String) async throws {
         let session = try await client.auth.session
-        try await client.from("profiles")
+        try await client.from(DB.profiles)
             .insert(NewProfileInsert(id: session.user.id, pairing_code: code))
             .execute()
     }
@@ -69,14 +76,14 @@ final class SupabaseManager {
     func fetchCurrentCouple() async throws -> Couple? {
         let session = try await client.auth.session
         let uid = session.user.id
-        let asUser1: [Couple] = try await client.from("couples")
+        let asUser1: [Couple] = try await client.from(DB.couples)
             .select()
             .eq("user1_id", value: uid)
             .limit(1)
             .execute()
             .value
         if let first = asUser1.first { return first }
-        let asUser2: [Couple] = try await client.from("couples")
+        let asUser2: [Couple] = try await client.from(DB.couples)
             .select()
             .eq("user2_id", value: uid)
             .limit(1)
@@ -98,7 +105,7 @@ final class SupabaseManager {
             let note: String?
         }
 
-        let response: [MemoryResponse] = try await client.from("memories")
+        let response: [MemoryResponse] = try await client.from(DB.memories)
             .select()
             .eq("couple_id", value: coupleId)
             .execute()
@@ -133,13 +140,13 @@ final class SupabaseManager {
     func uploadMemoryImage(data: Data, coupleId: UUID) async throws -> URL {
         let fileName = "\(coupleId.uuidString)/memories/\(UUID().uuidString).jpg"
         try await client.storage
-            .from("notes")
+            .from(DB.notesBucket)
             .upload(
                 fileName,
                 data: data,
                 options: FileOptions(contentType: "image/jpeg")
             )
-        return try client.storage.from("notes").getPublicURL(path: fileName)
+        return try client.storage.from(DB.notesBucket).getPublicURL(path: fileName)
     }
 
     func insertMemory(coupleId: UUID, creatorId: UUID, imageUrls: [URL], lat: Double, lng: Double, date: Date, note: String) async throws {
@@ -166,13 +173,13 @@ final class SupabaseManager {
             note: note
         )
 
-        try await client.from("memories")
+        try await client.from(DB.memories)
             .insert(payload)
             .execute()
     }
 
     func deleteMemory(id: UUID) async throws {
-        try await client.from("memories")
+        try await client.from(DB.memories)
             .delete()
             .eq("id", value: id)
             .execute()
@@ -194,7 +201,7 @@ final class SupabaseManager {
 
         guard let partnerId else { throw PairingError.partnerNotFound }
 
-        let inserted: Couple = try await client.from("couples")
+        let inserted: Couple = try await client.from(DB.couples)
             .insert(NewCoupleInsert(user1_id: selfId, user2_id: partnerId))
             .select()
             .single()
@@ -206,7 +213,7 @@ final class SupabaseManager {
     /// Writes latest location and battery snapshot for the signed-in user.
     func updateAmbientData(latitude: Double, longitude: Double, batteryLevel: Int) async throws {
         let session = try await client.auth.session
-        try await client.from("profiles")
+        try await client.from(DB.profiles)
             .update(AmbientDataUpdate(latitude: latitude, longitude: longitude, battery_level: batteryLevel))
             .eq("id", value: session.user.id)
             .execute()
@@ -216,14 +223,14 @@ final class SupabaseManager {
         let path = "\(UUID().uuidString).png"
 
         try await client.storage
-            .from("notes")
+            .from(DB.notesBucket)
             .upload(
                 path,
                 data: data,
                 options: FileOptions(contentType: "image/png")
             )
 
-        let publicUrl = try client.storage.from("notes").getPublicURL(path: path)
+        let publicUrl = try client.storage.from(DB.notesBucket).getPublicURL(path: path)
         return publicUrl.absoluteString
     }
 
@@ -231,7 +238,7 @@ final class SupabaseManager {
         let session = try await client.auth.session
         let myId = session.user.id
 
-        try await client.from("profiles")
+        try await client.from(DB.profiles)
             .update(NoteUpdateDTO(latest_note_url: url))
             .eq("id", value: myId)
             .execute()
@@ -241,7 +248,7 @@ final class SupabaseManager {
         let session = try await client.auth.session
         let myId = session.user.id
 
-        try await client.from("profiles")
+        try await client.from(DB.profiles)
             .update(DeviceTokenUpdateDTO(device_token: token))
             .eq("id", value: myId)
             .execute()
@@ -254,7 +261,7 @@ final class SupabaseManager {
             let display_name: String
             let anniversary_date: Date
         }
-        try await client.from("profiles")
+        try await client.from(DB.profiles)
             .update(UpdateDTO(display_name: name, anniversary_date: anniversary))
             .eq("id", value: session.user.id)
             .execute()
@@ -266,7 +273,7 @@ final class SupabaseManager {
         struct MsgDTO: Encodable, Sendable {
             let latest_message: String
         }
-        try await client.from("profiles")
+        try await client.from(DB.profiles)
             .update(MsgDTO(latest_message: message))
             .eq("id", value: session.user.id)
             .execute()

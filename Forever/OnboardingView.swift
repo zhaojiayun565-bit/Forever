@@ -1,9 +1,10 @@
 import SwiftUI
 import CoreLocation
 import UserNotifications
+import AuthenticationServices
 
 enum OnboardingStep: Int, CaseIterable {
-    case myName, partnerName, anniversary, features, paywall
+    case myName, partnerName, anniversary, features, login, paywall
 }
 
 struct OnboardingView: View {
@@ -44,6 +45,9 @@ struct OnboardingView: View {
                     .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
                 case .features:
                     FeatureCarouselView(tab: $featureTab, action: advance)
+                        .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
+                case .login: // NEW STEP
+                    OnboardingLoginView(action: advance)
                         .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
                 case .paywall:
                     PaywallView {
@@ -309,6 +313,110 @@ struct PaywallFeatureRow: View {
                 .foregroundColor(.pink)
             Text(text)
                 .font(.headline)
+        }
+    }
+}
+
+struct OnboardingLoginView: View {
+    let action: () -> Void
+    @Environment(AppStateManager.self) private var state
+    
+    @State private var currentNonce: String?
+    @State private var authErrorMessage: String?
+    @State private var isLoggingIn = false
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            
+            Image(systemName: "person.crop.circle.badge.checkmark")
+                .font(.system(size: 100))
+                .foregroundStyle(
+                    LinearGradient(colors: [.pink, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
+                )
+                .padding(.bottom, 20)
+            
+            Text("Save Your Profile")
+                .font(.system(size: 32, weight: .bold, design: .rounded))
+            
+            Text("Create your account securely so you and your partner can sync your memories.")
+                .font(.title3)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+            
+            Spacer()
+            
+            if isLoggingIn {
+                ProgressView().padding()
+            }
+            
+            SignInWithAppleButton(
+                onRequest: { request in
+                    let nonce = AppleAuthHelper.randomNonceString()
+                    currentNonce = nonce
+                    request.requestedScopes = [.fullName, .email]
+                    request.nonce = AppleAuthHelper.sha256(nonce)
+                },
+                onCompletion: { result in
+                    handleAppleAuth(result: result)
+                }
+            )
+            .signInWithAppleButtonStyle(.black)
+            .frame(height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 40)
+            .padding(.bottom, 60)
+            .disabled(isLoggingIn)
+        }
+        .onAppear {
+            // If they close the app and reopen it, skip this step if they are already logged in!
+            if state.currentUser != nil {
+                action()
+            }
+        }
+        .alert("Sign In Failed", isPresented: Binding(
+            get: { authErrorMessage != nil },
+            set: { if !$0 { authErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(authErrorMessage ?? "Something went wrong.")
+        }
+    }
+    
+    private func handleAppleAuth(result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .success(let authorization):
+            if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential,
+               let nonce = currentNonce,
+               let appleIDToken = appleIDCredential.identityToken,
+               let idTokenString = String(data: appleIDToken, encoding: .utf8) {
+                
+                isLoggingIn = true
+                Task {
+                    do {
+                        try await SupabaseManager.shared.signInWithApple(idToken: idTokenString, nonce: nonce)
+                        await state.initializeApp()
+                        
+                        // Successfully logged in! Smoothly advance to the paywall.
+                        DispatchQueue.main.async {
+                            isLoggingIn = false
+                            action()
+                        }
+                    } catch {
+                        DispatchQueue.main.async {
+                            isLoggingIn = false
+                            authErrorMessage = "Could not sign in right now. Please try again."
+                        }
+                    }
+                }
+            } else {
+                authErrorMessage = "Apple Sign In did not return valid credentials."
+            }
+        case .failure(let error):
+            authErrorMessage = "Apple Sign In was cancelled or failed. Please try again."
+            print("Authorization failed: \(error)")
         }
     }
 }

@@ -320,6 +320,7 @@ struct PaywallFeatureRow: View {
 struct OnboardingLoginView: View {
     let action: () -> Void
     @Environment(AppStateManager.self) private var state
+    @Environment(\.colorScheme) private var colorScheme
     
     @State private var currentNonce: String?
     @State private var authErrorMessage: String?
@@ -362,7 +363,8 @@ struct OnboardingLoginView: View {
                     handleAppleAuth(result: result)
                 }
             )
-            .signInWithAppleButtonStyle(.black)
+            // THE FIX: Adapts the button color perfectly to Light or Dark mode
+            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
             .frame(height: 56)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .padding(.horizontal, 40)

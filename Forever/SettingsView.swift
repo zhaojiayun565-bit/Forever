@@ -17,6 +17,7 @@ private enum DistanceUnitOption: String, CaseIterable {
 
 struct SettingsView: View {
     @Environment(AppStateManager.self) private var state
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @State private var displayName = ""
     @State private var anniversary = Date()
     @State private var isSaving = false
@@ -106,6 +107,20 @@ struct SettingsView: View {
                         HStack {
                             Image(systemName: "heart.slash.fill")
                             Text("Unpair from Partner")
+                        }
+                    }
+
+                    Button("DEV: Force Reset & Sign Out", role: .destructive) {
+                        Task {
+                            // 1. Wipe the secure iOS Keychain
+                            try? await SupabaseManager.shared.signOut()
+
+                            // 2. Reset the Onboarding router
+                            hasCompletedOnboarding = false
+
+                            // 3. Clear the local UI state so ContentView updates instantly
+                            state.currentUser = nil
+                            state.currentCouple = nil
                         }
                     }
                 }

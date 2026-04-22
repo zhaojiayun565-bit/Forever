@@ -3,6 +3,7 @@ import SwiftUI
 /// Collects the partner’s pairing code until `currentCouple` is set by `AppStateManager`.
 struct PairingView: View {
     @Environment(AppStateManager.self) private var state
+    @AppStorage("hasSkippedPairing") private var hasSkippedPairing = false
     @State private var code = ""
     @State private var errorMessage: String?
     @State private var isLinking = false
@@ -68,6 +69,15 @@ struct PairingView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).count < 6 || isLinking)
+
+            Button("Skip for now") {
+                withAnimation {
+                    hasSkippedPairing = true
+                }
+            }
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.top, 8)
         }
         .padding(30)
     }

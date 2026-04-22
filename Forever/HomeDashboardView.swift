@@ -44,6 +44,27 @@ struct HomeDashboardView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
+                    if state.currentCouple == nil {
+                        BubblyCard {
+                            VStack(spacing: 12) {
+                                Image(systemName: "person.2.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundStyle(
+                                        LinearGradient(colors: [.pink, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                    )
+
+                                Text("You're exploring solo!")
+                                    .font(.system(.headline, design: .rounded))
+
+                                Text("Your invite code is **\(state.currentUser?.pairingCode ?? "----")**. Head to the **Me** tab to link with your partner and unlock everything.")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                        }
+                    }
                     
                     // HERO: Days Together
                     BubblyCard {

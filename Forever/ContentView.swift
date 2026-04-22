@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @Environment(AppStateManager.self) private var state
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("hasSkippedPairing") private var hasSkippedPairing = false
     @Environment(\.scenePhase) var scenePhase
 
     var body: some View {
@@ -16,11 +17,11 @@ struct ContentView: View {
             } else if state.currentUser == nil {
                 // State 1: Not Logged In
                 LoginView()
-            } else if state.currentCouple == nil {
+            } else if state.currentCouple == nil && !hasSkippedPairing {
                 // State 2: Logged in, but no partner paired
                 PairingView()
             } else {
-                // State 3: Fully paired
+                // State 3: Fully paired (or exploring solo)
                 TabView {
                     HomeDashboardView()
                         .tabItem { Label("Us", systemImage: "heart.fill") }

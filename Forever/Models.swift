@@ -53,7 +53,8 @@ struct Couple: Codable, Identifiable, Hashable {
 
 struct CoupleMemory: Identifiable, Equatable, Hashable {
     let id: UUID
-    let coupleId: UUID
+    /// `nil` for memories saved in Solo Mode before pairing.
+    let coupleId: UUID?
     let creatorId: UUID
     let imageUrls: [URL]
     let latitude: Double

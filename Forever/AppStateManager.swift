@@ -77,11 +77,11 @@ final class AppStateManager {
     }
 
     func loadMemories() async {
-        guard let coupleId = currentCouple?.id else { return }
+        guard let user = currentUser else { return }
         do {
-            memories = try await supabase.fetchMemories(coupleId: coupleId)
+            memories = try await supabase.fetchMemories(coupleId: currentCouple?.id, creatorId: user.id)
         } catch {
-            print("🚨 Failed to load memories: \(error)")
+            print("🚨 Fetch Memories Error: \(error)")
         }
     }
 
@@ -175,7 +175,11 @@ final class AppStateManager {
 
     /// After the user enters a partner code, links accounts and refreshes `currentCouple`.
     func linkWithPartner(code: String) async throws {
-        currentCouple = try await supabase.linkPartner(code: code)
+        let newlyFetchedCouple = try await supabase.linkPartner(code: code)
+        currentCouple = newlyFetchedCouple
+        guard let user = currentUser else { return }
+        try await supabase.attachSoloMemoriesToCouple(coupleId: newlyFetchedCouple.id, creatorId: user.id)
+        await loadMemories()
     }
 
     /// Deletes the relationship row and clears local pairing state.

@@ -9,15 +9,13 @@ struct AddMemoryView: View {
 
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedImages: [UIImage] = []
-
     @State private var date = Date()
-    @State private var showDatePickerSheet = false
-
+    @State private var showCalendar = false
     @State private var coordinate: CLLocationCoordinate2D?
     @State private var locationName: String?
-
     @State private var note = ""
     @State private var isSaving = false
+    @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -39,7 +37,7 @@ struct AddMemoryView: View {
                                 Task { await loadImages(from: items) }
                             }
 
-                            ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, img in
+                            ForEach(selectedImages, id: \.self) { img in
                                 Image(uiImage: img)
                                     .resizable()
                                     .scaledToFill()
@@ -54,14 +52,26 @@ struct AddMemoryView: View {
                 }
 
                 Section {
-                    HStack {
-                        Text("Date")
-                        Spacer()
-                        Text(date.formatted(date: .abbreviated, time: .omitted))
-                            .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack {
+                            Text("Date")
+                            Spacer()
+                            Text(date.formatted(date: .abbreviated, time: .omitted))
+                                .foregroundStyle(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation { showCalendar.toggle() }
+                        }
+
+                        if showCalendar {
+                            DatePicker("", selection: $date, displayedComponents: .date)
+                                .datePickerStyle(.graphical)
+                                .onChange(of: date) { _, _ in
+                                    withAnimation { showCalendar = false }
+                                }
+                        }
                     }
-                    .contentShape(Rectangle())
-                    .onTapGesture { showDatePickerSheet = true }
 
                     NavigationLink {
                         LocationPickerView(selectedCoordinate: $coordinate, locationName: $locationName)
@@ -80,25 +90,6 @@ struct AddMemoryView: View {
             }
             .navigationTitle("New Memory")
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showDatePickerSheet) {
-                NavigationStack {
-                    DatePicker("", selection: $date, displayedComponents: .date)
-                        .datePickerStyle(.graphical)
-                        .padding()
-                        .onChange(of: date) { _, _ in
-                            showDatePickerSheet = false
-                        }
-                        .frame(maxWidth: .infinity, alignment: .top)
-                        .navigationTitle("Date")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button("Cancel") { showDatePickerSheet = false }
-                            }
-                        }
-                }
-                .presentationDetents([.medium, .large])
-            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -129,6 +120,17 @@ struct AddMemoryView: View {
                     }
                 }
             }
+            .alert(
+                "Save Failed",
+                isPresented: Binding(
+                    get: { errorMessage != nil },
+                    set: { if !$0 { errorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(errorMessage ?? "An unknown error occurred.")
+            }
         }
     }
 
@@ -143,24 +145,51 @@ struct AddMemoryView: View {
     }
 
     private func saveMemory() async {
-        guard let lat = coordinate?.latitude, let lng = coordinate?.longitude,
-              let coupleId = state.currentCouple?.id, let creatorId = state.currentUser?.id else { return }
+        guard let creatorId = state.currentUser?.id else {
+            errorMessage = "Authentication error. Please log in again."
+            return
+        }
+
+        guard let lat = coordinate?.latitude, let lng = coordinate?.longitude else {
+            errorMessage = "Please select a valid location."
+            return
+        }
 
         isSaving = true
         defer { isSaving = false }
 
         do {
-            var uploadedUrls: [URL] = []
-            for image in selectedImages {
-                if let data = image.jpegData(compressionQuality: 0.8) {
-                    let url = try await SupabaseManager.shared.uploadMemoryImage(data: data, coupleId: coupleId)
-                    uploadedUrls.append(url)
+            let coupleIdForMemory = state.currentCouple?.id
+            let uploadedUrls = try await withThrowingTaskGroup(of: URL.self) { group in
+                for image in selectedImages {
+                    if let data = image.jpegData(compressionQuality: 0.7) {
+                        group.addTask {
+                            try await SupabaseManager.shared.uploadMemoryImage(
+                                data: data,
+                                coupleId: coupleIdForMemory,
+                                creatorId: creatorId
+                            )
+                        }
+                    }
                 }
+
+                var urls: [URL] = []
+                for try await url in group {
+                    urls.append(url)
+                }
+                return urls
             }
-            guard !uploadedUrls.isEmpty else { return }
+
+            guard !uploadedUrls.isEmpty else {
+                throw NSError(
+                    domain: "",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "Failed to process images. Please try again."]
+                )
+            }
 
             try await SupabaseManager.shared.insertMemory(
-                coupleId: coupleId,
+                coupleId: coupleIdForMemory,
                 creatorId: creatorId,
                 imageUrls: uploadedUrls,
                 lat: lat,
@@ -171,6 +200,7 @@ struct AddMemoryView: View {
             await state.loadMemories()
             dismiss()
         } catch {
+            errorMessage = error.localizedDescription
             print("🚨 Save Error: \(error)")
         }
     }

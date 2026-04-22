@@ -92,10 +92,10 @@ final class SupabaseManager {
         return asUser2.first
     }
 
-    func fetchMemories(coupleId: UUID) async throws -> [CoupleMemory] {
+    func fetchMemories(coupleId: UUID?, creatorId: UUID) async throws -> [CoupleMemory] {
         struct MemoryResponse: Decodable {
             let id: UUID
-            let couple_id: UUID
+            let couple_id: UUID?
             let creator_id: UUID
             let image_urls: [String]?
             let image_url: String?
@@ -105,11 +105,21 @@ final class SupabaseManager {
             let note: String?
         }
 
-        let response: [MemoryResponse] = try await client.from(DB.memories)
-            .select()
-            .eq("couple_id", value: coupleId)
-            .execute()
-            .value
+        let response: [MemoryResponse]
+        if let coupleId {
+            response = try await client.from(DB.memories)
+                .select()
+                .eq("couple_id", value: coupleId)
+                .execute()
+                .value
+        } else {
+            response = try await client.from(DB.memories)
+                .select()
+                .eq("creator_id", value: creatorId)
+                .is("couple_id", value: nil)
+                .execute()
+                .value
+        }
 
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -137,8 +147,9 @@ final class SupabaseManager {
         }
     }
 
-    func uploadMemoryImage(data: Data, coupleId: UUID) async throws -> URL {
-        let fileName = "\(coupleId.uuidString)/memories/\(UUID().uuidString).jpg"
+    func uploadMemoryImage(data: Data, coupleId: UUID?, creatorId: UUID) async throws -> URL {
+        let folderPrefix = coupleId.map(\.uuidString) ?? "solo/\(creatorId.uuidString)"
+        let fileName = "\(folderPrefix)/\(UUID().uuidString).jpg"
         try await client.storage
             .from(DB.notesBucket)
             .upload(
@@ -149,15 +160,15 @@ final class SupabaseManager {
         return try client.storage.from(DB.notesBucket).getPublicURL(path: fileName)
     }
 
-    func insertMemory(coupleId: UUID, creatorId: UUID, imageUrls: [URL], lat: Double, lng: Double, date: Date, note: String) async throws {
+    func insertMemory(coupleId: UUID?, creatorId: UUID, imageUrls: [URL], lat: Double, lng: Double, date: Date, note: String) async throws {
         struct InsertMemory: Encodable, Sendable {
-            let couple_id: UUID
+            let couple_id: UUID?
             let creator_id: UUID
             let image_urls: [String]
             let latitude: Double
             let longitude: Double
             let created_at: String
-            let note: String
+            let note: String?
         }
 
         let formatter = ISO8601DateFormatter()
@@ -170,11 +181,20 @@ final class SupabaseManager {
             latitude: lat,
             longitude: lng,
             created_at: formatter.string(from: date),
-            note: note
+            note: note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : note
         )
 
         try await client.from(DB.memories)
             .insert(payload)
+            .execute()
+    }
+
+    /// Assigns the new couple to all solo memories created by this user.
+    func attachSoloMemoriesToCouple(coupleId: UUID, creatorId: UUID) async throws {
+        try await client.from(DB.memories)
+            .update(MemoryCoupleAttachUpdate(couple_id: coupleId))
+            .eq("creator_id", value: creatorId)
+            .is("couple_id", value: nil)
             .execute()
     }
 
@@ -318,4 +338,8 @@ private nonisolated struct NoteUpdateDTO: Encodable, Sendable {
 
 private nonisolated struct DeviceTokenUpdateDTO: Encodable, Sendable {
     let device_token: String
+}
+
+private nonisolated struct MemoryCoupleAttachUpdate: Encodable, Sendable {
+    let couple_id: UUID
 }

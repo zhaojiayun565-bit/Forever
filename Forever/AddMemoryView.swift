@@ -10,10 +10,11 @@ struct AddMemoryView: View {
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedImages: [UIImage] = []
     @State private var date = Date()
-    @State private var showCalendar = false
+    @State private var showingCalendarSheet = false
     @State private var coordinate: CLLocationCoordinate2D?
     @State private var locationName: String?
     @State private var note = ""
+
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -37,7 +38,7 @@ struct AddMemoryView: View {
                                 Task { await loadImages(from: items) }
                             }
 
-                            ForEach(selectedImages, id: \.self) { img in
+                            ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, img in
                                 Image(uiImage: img)
                                     .resizable()
                                     .scaledToFill()
@@ -52,25 +53,15 @@ struct AddMemoryView: View {
                 }
 
                 Section {
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            Text("Date")
-                            Spacer()
-                            Text(date.formatted(date: .abbreviated, time: .omitted))
-                                .foregroundStyle(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation { showCalendar.toggle() }
-                        }
-
-                        if showCalendar {
-                            DatePicker("", selection: $date, displayedComponents: .date)
-                                .datePickerStyle(.graphical)
-                                .onChange(of: date) { _, _ in
-                                    withAnimation { showCalendar = false }
-                                }
-                        }
+                    HStack {
+                        Text("Date")
+                        Spacer()
+                        Text(date.formatted(date: .abbreviated, time: .omitted))
+                            .foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        showingCalendarSheet = true
                     }
 
                     NavigationLink {
@@ -81,6 +72,7 @@ struct AddMemoryView: View {
                             Spacer()
                             Text(locationName ?? "Choose")
                                 .foregroundStyle(locationName != nil ? Color.secondary : Color.pink)
+                                .lineLimit(1)
                         }
                     }
 
@@ -131,6 +123,21 @@ struct AddMemoryView: View {
             } message: {
                 Text(errorMessage ?? "An unknown error occurred.")
             }
+            .sheet(isPresented: $showingCalendarSheet) {
+                NavigationStack {
+                    DatePicker("Select Date", selection: $date, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                        .padding()
+                        .navigationTitle("Choose Date")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { showingCalendarSheet = false }
+                            }
+                        }
+                }
+                .presentationDetents([.medium])
+            }
         }
     }
 
@@ -149,7 +156,6 @@ struct AddMemoryView: View {
             errorMessage = "Authentication error. Please log in again."
             return
         }
-
         guard let lat = coordinate?.latitude, let lng = coordinate?.longitude else {
             errorMessage = "Please select a valid location."
             return
@@ -198,6 +204,8 @@ struct AddMemoryView: View {
                 note: note
             )
             await state.loadMemories()
+
+            state.newlyAddedLocation = NewlyAddedMemoryCoordinate(latitude: lat, longitude: lng)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

@@ -4,6 +4,12 @@ import Observation
 import WidgetKit
 import Supabase
 
+/// Coordinate for map focus after saving a memory; explicit `Equatable` for SwiftUI `onChange`.
+struct NewlyAddedMemoryCoordinate: Equatable {
+    let latitude: Double
+    let longitude: Double
+}
+
 /// App-wide session, profile, and pairing state.
 @MainActor
 @Observable
@@ -14,6 +20,8 @@ final class AppStateManager {
     var currentCouple: Couple?
     var partnerProfile: Profile?
     var memories: [CoupleMemory] = []
+    /// Set after saving a memory so the map can animate to it; cleared by the map after handling.
+    var newlyAddedLocation: NewlyAddedMemoryCoordinate?
     var isLoading = true
 
     init(supabase: SupabaseManager = .shared) {

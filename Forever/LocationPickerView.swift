@@ -124,7 +124,8 @@ struct LocationPickerView: View {
         }
 
         if let first {
-            locationName = first.locality ?? first.name ?? "Selected Location"
+            // Prioritize POI / street name, then city, then search text.
+            locationName = first.name ?? first.locality ?? searchService.searchQuery
         } else {
             locationName = searchService.searchQuery.isEmpty ? "Selected Location" : searchService.searchQuery
         }

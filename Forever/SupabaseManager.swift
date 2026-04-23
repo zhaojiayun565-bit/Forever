@@ -189,6 +189,33 @@ final class SupabaseManager {
             .execute()
     }
 
+    func updateMemory(id: UUID, imageUrls: [URL], lat: Double, lng: Double, date: Date, note: String) async throws {
+        struct UpdatePayload: Encodable, Sendable {
+            let image_urls: [String]
+            let latitude: Double
+            let longitude: Double
+            let created_at: String
+            let note: String?
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let payload = UpdatePayload(
+            image_urls: imageUrls.map(\.absoluteString),
+            latitude: lat,
+            longitude: lng,
+            created_at: formatter.string(from: date),
+            note: cleanNote.isEmpty ? nil : cleanNote
+        )
+
+        try await client.from(DB.memories)
+            .update(payload)
+            .eq("id", value: id)
+            .execute()
+    }
+
     /// Assigns the new couple to all solo memories created by this user.
     func attachSoloMemoriesToCouple(coupleId: UUID, creatorId: UUID) async throws {
         try await client.from(DB.memories)
@@ -201,6 +228,21 @@ final class SupabaseManager {
     func deleteMemory(id: UUID) async throws {
         try await client.from(DB.memories)
             .delete()
+            .eq("id", value: id)
+            .execute()
+    }
+
+    /// Persists note text; empty string clears the note in the database.
+    func updateMemoryNote(id: UUID, note: String) async throws {
+        struct UpdatePayload: Encodable, Sendable {
+            let note: String?
+        }
+
+        let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let payload = UpdatePayload(note: cleanNote.isEmpty ? nil : cleanNote)
+
+        try await client.from(DB.memories)
+            .update(payload)
             .eq("id", value: id)
             .execute()
     }

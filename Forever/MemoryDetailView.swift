@@ -1,5 +1,6 @@
 import Kingfisher
 import SwiftUI
+import UIKit
 
 struct MemoryDetailView: View {
     let memory: CoupleMemory
@@ -9,13 +10,16 @@ struct MemoryDetailView: View {
     @State private var showingDeleteAlert = false
     @State private var isDeleting = false
 
+    @State private var showingEditSheet = false
+    @State private var actionErrorMessage: String?
+
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
                 Color.black.ignoresSafeArea()
 
                 TabView {
-                    ForEach(Array(memory.imageUrls.enumerated()), id: \.offset) { _, url in
+                    ForEach(memory.imageUrls, id: \.self) { url in
                         KFImage.url(url)
                             .placeholder { ProgressView().tint(.white) }
                             .fade(duration: 0.25)
@@ -71,8 +75,8 @@ struct MemoryDetailView: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button("Edit Note", systemImage: "pencil") {
-                            // Placeholder for edit flow
+                        Button("Edit Memory", systemImage: "pencil") {
+                            showingEditSheet = true
                         }
 
                         Button("Delete Memory", systemImage: "trash", role: .destructive) {
@@ -94,6 +98,22 @@ struct MemoryDetailView: View {
             } message: {
                 Text("This will permanently remove this memory for both you and your partner. This cannot be undone.")
             }
+            .alert(
+                "Action Failed",
+                isPresented: Binding(
+                    get: { actionErrorMessage != nil },
+                    set: { if !$0 { actionErrorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(actionErrorMessage ?? "Something went wrong.")
+            }
+            .sheet(isPresented: $showingEditSheet) {
+                EditMemoryView(memory: memory) {
+                    dismiss()
+                }
+            }
         }
     }
 
@@ -104,6 +124,7 @@ struct MemoryDetailView: View {
             await state.loadMemories()
             dismiss()
         } catch {
+            actionErrorMessage = error.localizedDescription
             print("🚨 Failed to delete: \(error)")
             isDeleting = false
         }

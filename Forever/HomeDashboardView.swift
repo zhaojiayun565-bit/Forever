@@ -7,11 +7,6 @@ struct HomeDashboardView: View {
     @State private var lockScreenMessage = ""
     @State private var isDrawing = false
     
-    var daysTogether: Int {
-        guard let date = state.currentUser?.anniversaryDate else { return 0 }
-        return Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
-    }
-
     private var distanceInMiles: Double? {
         guard
             let myLat = state.currentUser?.latitude,
@@ -66,27 +61,10 @@ struct HomeDashboardView: View {
                         }
                     }
                     
-                    // HERO: Days Together
-                    BubblyCard {
-                        VStack(spacing: 8) {
-                            Text("We've been together for")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            
-                            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                Text("\(daysTogether)")
-                                    .font(.system(size: 64, weight: .black, design: .rounded))
-                                    .foregroundStyle(
-                                        LinearGradient(colors: [.pink, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                    )
-                                Text("days")
-                                    .font(.system(.title2, design: .rounded).weight(.bold))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
+                    // 2. THE HERO CARD
+                    DaysTogetherHeroCard()
 
+                    // 3. THE MAP STATS CARD
                     BubblyCard {
                         VStack(spacing: 8) {
                             Text("Distance Apart")
@@ -172,5 +150,57 @@ struct HomeDashboardView: View {
                 DrawingView()
             }
         }
+    }
+}
+
+struct DaysTogetherHeroCard: View {
+    @Environment(AppStateManager.self) private var state
+    
+    var daysTogether: Int {
+        guard let date = state.currentUser?.anniversaryDate else { return 0 }
+        let days = Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
+        return max(0, days)
+    }
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            HStack(spacing: -24) {
+                AvatarView(url: nil, size: 80)
+                    .zIndex(1)
+                
+                AvatarView(url: nil, size: 80)
+                    .zIndex(0)
+            }
+            .overlay(alignment: .bottom) {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(8)
+                    .background(Color.pink)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Color(UIColor.secondarySystemGroupedBackground), lineWidth: 3))
+                    .offset(y: 12)
+            }
+            
+            VStack(spacing: 4) {
+                Text("\(daysTogether)")
+                    .font(.system(size: 56, weight: .black, design: .rounded))
+                    .foregroundStyle(
+                        LinearGradient(colors: [.pink, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    )
+                
+                Text("Days Together")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(1.5)
+            }
+            .padding(.top, 8)
+        }
+        .padding(.vertical, 32)
+        .frame(maxWidth: .infinity)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+        .shadow(color: .black.opacity(0.05), radius: 20, x: 0, y: 10)
     }
 }

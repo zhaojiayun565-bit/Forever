@@ -343,22 +343,45 @@ struct DaysTogetherWidgetView: View {
 
     private var systemSmallView: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color.pink.opacity(0.9), Color.purple.opacity(0.9), Color.blue.opacity(0.9)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            VStack(spacing: 8) {
-                Image(systemName: "heart.fill")
-                    .font(.title3)
-                    .foregroundStyle(.white)
-                Text("\(dayText) Days Together")
-                    .font(.system(size: 20, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
+            LinearGradient(colors: [Color.pink.opacity(0.1), Color.white], startPoint: .top, endPoint: .bottom)
+            
+            VStack(spacing: 16) {
+                HStack(spacing: -16) {
+                    Circle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 56, height: 56)
+                        .overlay(Circle().stroke(Color.white, lineWidth: 3))
+                        .overlay(Image(systemName: "person.fill").foregroundStyle(.white))
+                        .zIndex(1)
+                    
+                    Circle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 56, height: 56)
+                        .overlay(Circle().stroke(Color.white, lineWidth: 3))
+                        .overlay(Image(systemName: "person.fill").foregroundStyle(.white))
+                        .zIndex(0)
+                }
+                .overlay(alignment: .bottom) {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white)
+                        .padding(6)
+                        .background(Color.pink)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                        .offset(y: 10)
+                }
+                
+                VStack(spacing: 2) {
+                    Text(dayText)
+                        .font(.system(size: 32, weight: .black, design: .rounded))
+                        .foregroundStyle(Color.primary)
+                    
+                    Text("Days Together")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                }
             }
             .padding(10)
         }

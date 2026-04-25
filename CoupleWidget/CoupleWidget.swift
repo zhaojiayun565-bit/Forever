@@ -342,49 +342,41 @@ struct DaysTogetherWidgetView: View {
     }
 
     private var systemSmallView: some View {
-        ZStack {
-            LinearGradient(colors: [Color.pink.opacity(0.1), Color.white], startPoint: .top, endPoint: .bottom)
-            
-            VStack(spacing: 16) {
-                HStack(spacing: -16) {
-                    Circle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(width: 56, height: 56)
-                        .overlay(Circle().stroke(Color.white, lineWidth: 3))
-                        .overlay(Image(systemName: "person.fill").foregroundStyle(.white))
-                        .zIndex(1)
+        VStack(spacing: 12) {
+            HStack(spacing: 16) {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable()
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, Color(UIColor.darkGray))
+                    .frame(width: 54, height: 54)
                     
-                    Circle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(width: 56, height: 56)
-                        .overlay(Circle().stroke(Color.white, lineWidth: 3))
-                        .overlay(Image(systemName: "person.fill").foregroundStyle(.white))
-                        .zIndex(0)
-                }
-                .overlay(alignment: .bottom) {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.white)
-                        .padding(6)
-                        .background(Color.pink)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                        .offset(y: 10)
-                }
-                
-                VStack(spacing: 2) {
-                    Text(dayText)
-                        .font(.system(size: 32, weight: .black, design: .rounded))
-                        .foregroundStyle(Color.primary)
-                    
-                    Text("Days Together")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-                }
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable()
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, Color(UIColor.darkGray))
+                    .frame(width: 54, height: 54)
             }
-            .padding(10)
+            .overlay {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.pink)
+                    .padding(5)
+                    .background(Color.black)
+                    .clipShape(Circle())
+            }
+            
+            VStack(spacing: -2) {
+                Text(dayText)
+                    .font(.system(size: 38, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                
+                Text("DAYS")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.gray)
+                    .tracking(1.5)
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

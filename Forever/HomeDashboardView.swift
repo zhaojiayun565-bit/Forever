@@ -163,44 +163,34 @@ struct DaysTogetherHeroCard: View {
     }
     
     var body: some View {
-        VStack(spacing: 20) {
-            HStack(spacing: -24) {
-                AvatarView(url: nil, size: 80)
-                    .zIndex(1)
-                
-                AvatarView(url: nil, size: 80)
-                    .zIndex(0)
+        VStack(spacing: 16) {
+            HStack(spacing: 20) {
+                AvatarView(url: nil, size: 72)
+                AvatarView(url: nil, size: 72)
             }
-            .overlay(alignment: .bottom) {
+            .overlay {
                 Image(systemName: "heart.fill")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(8)
-                    .background(Color.pink)
+                    .font(.system(size: 20))
+                    .foregroundStyle(.pink)
+                    .padding(6)
+                    .background(Color.black)
                     .clipShape(Circle())
-                    .overlay(Circle().stroke(Color(UIColor.secondarySystemGroupedBackground), lineWidth: 3))
-                    .offset(y: 12)
             }
             
-            VStack(spacing: 4) {
+            VStack(spacing: -2) {
                 Text("\(daysTogether)")
-                    .font(.system(size: 56, weight: .black, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(colors: [.pink, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
-                    )
+                    .font(.system(size: 64, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
                 
-                Text("Days Together")
+                Text("DAYS")
                     .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(1.5)
+                    .foregroundStyle(.gray)
+                    .tracking(2)
             }
-            .padding(.top, 8)
         }
         .padding(.vertical, 32)
         .frame(maxWidth: .infinity)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .background(Color.black)
         .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
-        .shadow(color: .black.opacity(0.05), radius: 20, x: 0, y: 10)
     }
 }

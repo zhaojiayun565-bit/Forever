@@ -14,25 +14,35 @@ struct Provider: TimelineProvider {
             partnerName: "Partner",
             partnerMessage: "Love you always",
             anniversaryDate: Date(),
-            myCoordinate: CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090),
-            partnerCoordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+            myCoordinate: nil,
+            partnerCoordinate: nil,
+            mapSnapshot: nil
         )
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
-        let entry = SimpleEntry(
-            date: Date(),
-            distance: 1234.0,
-            noteImage: nil,
-            distanceUnit: "mi",
-            myName: "Me",
-            partnerName: "Partner",
-            partnerMessage: "Love you always",
-            anniversaryDate: Date(),
-            myCoordinate: CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090),
-            partnerCoordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
-        )
-        completion(entry)
+        let myCoord = CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090)
+        let partnerCoord = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+        Task {
+            let snapshot = try? await Self.makeMapSnapshot(
+                myCoord: myCoord,
+                partnerCoord: partnerCoord,
+                size: context.displaySize
+            )
+            completion(SimpleEntry(
+                date: Date(),
+                distance: 1234.0,
+                noteImage: nil,
+                distanceUnit: "mi",
+                myName: "Me",
+                partnerName: "Partner",
+                partnerMessage: "Love you always",
+                anniversaryDate: Date(),
+                myCoordinate: myCoord,
+                partnerCoordinate: partnerCoord,
+                mapSnapshot: snapshot
+            ))
+        }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
@@ -59,7 +69,6 @@ struct Provider: TimelineProvider {
             )
 
             var downloadedImage: UIImage? = nil
-
             if let urlString = defaults?.string(forKey: "partnerNoteUrl"),
                let url = URL(string: urlString) {
                 do {
@@ -68,6 +77,15 @@ struct Provider: TimelineProvider {
                 } catch {
                     print("🚨 Widget Image Download Failed: \(error)")
                 }
+            }
+
+            var mapSnapshot: UIImage? = nil
+            if let myCoord = myCoordinate, let partnerCoord = partnerCoordinate {
+                mapSnapshot = try? await Self.makeMapSnapshot(
+                    myCoord: myCoord,
+                    partnerCoord: partnerCoord,
+                    size: context.displaySize
+                )
             }
 
             let entry = SimpleEntry(
@@ -80,7 +98,8 @@ struct Provider: TimelineProvider {
                 partnerMessage: partnerMessage,
                 anniversaryDate: anniversaryDate,
                 myCoordinate: myCoordinate,
-                partnerCoordinate: partnerCoordinate
+                partnerCoordinate: partnerCoordinate,
+                mapSnapshot: mapSnapshot
             )
             let timeline = Timeline(entries: [entry], policy: .never)
             completion(timeline)
@@ -149,6 +168,105 @@ struct Provider: TimelineProvider {
         }
         return nil
     }
+
+    /// Renders a static map image with a dashed polyline and avatar circles using MKMapSnapshotter.
+    /// This is the widget-safe alternative to SwiftUI's Map view.
+    static func makeMapSnapshot(
+        myCoord: CLLocationCoordinate2D,
+        partnerCoord: CLLocationCoordinate2D,
+        size: CGSize
+    ) async throws -> UIImage {
+        let midpoint = CLLocationCoordinate2D(
+            latitude: (myCoord.latitude + partnerCoord.latitude) / 2,
+            longitude: (myCoord.longitude + partnerCoord.longitude) / 2
+        )
+        let latDelta = abs(myCoord.latitude - partnerCoord.latitude)
+        let lonDelta = abs(myCoord.longitude - partnerCoord.longitude)
+        let minSpan = 0.02
+        let padding = 1.7
+
+        let options = MKMapSnapshotter.Options()
+        options.region = MKCoordinateRegion(
+            center: midpoint,
+            span: MKCoordinateSpan(
+                latitudeDelta: max(latDelta * padding, minSpan),
+                longitudeDelta: max(lonDelta * padding, minSpan)
+            )
+        )
+        options.size = size
+        options.scale = UIScreen.main.scale
+
+        let snapshotter = MKMapSnapshotter(options: options)
+        let snapshot = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<MKMapSnapshotter.Snapshot, Error>) in
+            snapshotter.start { result, error in
+                if let result {
+                    continuation.resume(returning: result)
+                } else {
+                    continuation.resume(throwing: error ?? URLError(.unknown))
+                }
+            }
+        }
+
+        let p1 = snapshot.point(for: myCoord)
+        let p2 = snapshot.point(for: partnerCoord)
+        let avatar = makeAvatarImage(size: 36)
+
+        let renderer = UIGraphicsImageRenderer(size: size, format: {
+            let fmt = UIGraphicsImageRendererFormat()
+            fmt.scale = UIScreen.main.scale
+            return fmt
+        }())
+
+        return renderer.image { _ in
+            snapshot.image.draw(at: .zero)
+
+            // Dashed pink polyline
+            let linePath = UIBezierPath()
+            linePath.move(to: p1)
+            linePath.addLine(to: p2)
+            linePath.lineWidth = 3
+            let dashPattern: [CGFloat] = [8, 6]
+            linePath.setLineDash(dashPattern, count: dashPattern.count, phase: 0)
+            UIColor.systemPink.setStroke()
+            linePath.stroke()
+
+            // Avatar at each endpoint
+            let avatarSize: CGFloat = 36
+            let offset = avatarSize / 2
+            avatar.draw(in: CGRect(x: p1.x - offset, y: p1.y - offset, width: avatarSize, height: avatarSize))
+            avatar.draw(in: CGRect(x: p2.x - offset, y: p2.y - offset, width: avatarSize, height: avatarSize))
+        }
+    }
+
+    /// Renders a circular avatar image using Core Graphics + SF Symbol.
+    private static func makeAvatarImage(size: CGFloat) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
+        return renderer.image { _ in
+            let rect = CGRect(origin: .zero, size: CGSize(width: size, height: size))
+
+            // White border ring
+            UIColor.systemBackground.setFill()
+            UIBezierPath(ovalIn: rect).fill()
+
+            // Gray fill
+            UIColor.systemGray3.setFill()
+            UIBezierPath(ovalIn: rect.insetBy(dx: 2, dy: 2)).fill()
+
+            // Person icon centered inside the circle
+            let iconPointSize = size * 0.52
+            let config = UIImage.SymbolConfiguration(pointSize: iconPointSize, weight: .regular)
+            if let icon = UIImage(systemName: "person.fill", withConfiguration: config)?
+                .withTintColor(.white, renderingMode: .alwaysOriginal) {
+                let iconRect = CGRect(
+                    x: (size - icon.size.width) / 2,
+                    y: (size - icon.size.height) / 2 + size * 0.04,
+                    width: icon.size.width,
+                    height: icon.size.height
+                )
+                icon.draw(in: iconRect)
+            }
+        }
+    }
 }
 
 struct SimpleEntry: TimelineEntry {
@@ -162,16 +280,8 @@ struct SimpleEntry: TimelineEntry {
     let anniversaryDate: Date?
     let myCoordinate: CLLocationCoordinate2D?
     let partnerCoordinate: CLLocationCoordinate2D?
-}
-
-// Helper to calculate midpoint between coordinates.
-extension CLLocationCoordinate2D {
-    func midpoint(to other: CLLocationCoordinate2D) -> CLLocationCoordinate2D {
-        CLLocationCoordinate2D(
-            latitude: (latitude + other.latitude) / 2,
-            longitude: (longitude + other.longitude) / 2
-        )
-    }
+    /// Pre-rendered map image produced by MKMapSnapshotter; nil when coordinates are unavailable.
+    let mapSnapshot: UIImage?
 }
 
 // MARK: - Widget 1: Distance Map View
@@ -180,30 +290,20 @@ struct DistanceWidgetView: View {
 
     var body: some View {
         ZStack {
-            if let myCoord = entry.myCoordinate, let partnerCoord = entry.partnerCoordinate {
-                Map(interactionModes: []) {
-                    MapPolyline(coordinates: [myCoord, partnerCoord])
-                        .stroke(Color.pink, style: StrokeStyle(lineWidth: 3, dash: [6, 6]))
+            if let snapshot = entry.mapSnapshot {
+                Image(uiImage: snapshot)
+                    .resizable()
+                    .scaledToFill()
 
-                    Annotation("", coordinate: myCoord) {
-                        WidgetMapAvatar()
-                    }
-
-                    Annotation("", coordinate: partnerCoord) {
-                        WidgetMapAvatar()
-                    }
-
-                    Annotation("", coordinate: myCoord.midpoint(to: partnerCoord)) {
-                        Text("\(Int(entry.distance)) \(entry.distanceUnit)")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(.thickMaterial)
-                            .clipShape(Capsule())
-                            .shadow(color: .black.opacity(0.15), radius: 5, x: 0, y: 2)
-                    }
-                }
+                // Distance capsule centered on the widget (map is centered on the midpoint)
+                Text("\(Int(entry.distance)) \(entry.distanceUnit)")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.thickMaterial)
+                    .clipShape(Capsule())
+                    .shadow(color: .black.opacity(0.15), radius: 5, x: 0, y: 2)
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "location.slash.fill")
@@ -218,21 +318,6 @@ struct DistanceWidgetView: View {
         .containerBackground(for: .widget) {
             Color(UIColor.systemBackground)
         }
-    }
-}
-
-struct WidgetMapAvatar: View {
-    var body: some View {
-        ZStack {
-            Image(systemName: "person.crop.circle.fill")
-                .resizable()
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(.white, Color(UIColor.systemGray3))
-        }
-        .frame(width: 36, height: 36)
-        .clipShape(Circle())
-        .overlay(Circle().stroke(Color(UIColor.systemBackground), lineWidth: 2))
-        .shadow(radius: 3)
     }
 }
 

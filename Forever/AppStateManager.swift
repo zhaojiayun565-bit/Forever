@@ -109,7 +109,7 @@ final class AppStateManager {
             }
         }
 
-        // 2. Distance (ignore sub-mile float noise so GPS jitter does not spam reloads)
+        // 2. Distance + raw coordinates for the map widget
         if let myLat = currentUser?.latitude, let myLon = currentUser?.longitude,
            let pLat = partner.latitude, let pLon = partner.longitude {
             let myLocation = CLLocation(latitude: myLat, longitude: myLon)
@@ -125,6 +125,13 @@ final class AppStateManager {
                 defaults.set(distanceInMiles, forKey: key)
                 didChange = true
             }
+
+            // Explicit coordinate keys read by the distance map widget
+            defaults.set(myLat, forKey: "myLatitude")
+            defaults.set(myLon, forKey: "myLongitude")
+            defaults.set(pLat, forKey: "partnerLatitude")
+            defaults.set(pLon, forKey: "partnerLongitude")
+            didChange = true
         }
 
         // 3. Note URL

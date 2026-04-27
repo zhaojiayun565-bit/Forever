@@ -42,9 +42,12 @@ struct ContentView: View {
             await state.initializeApp()
         }
         .onChange(of: scenePhase) { _, newPhase in
-            // Self-Healing Widget Sync
+            // Upload our location to Supabase, then refresh partner data and widgets.
             if newPhase == .active && state.currentCouple != nil {
-                Task { await state.loadPartnerProfile() }
+                Task {
+                    try? await AmbientDataManager.shared.syncData()
+                    await state.loadPartnerProfile()
+                }
             }
         }
     }

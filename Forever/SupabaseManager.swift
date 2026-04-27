@@ -48,6 +48,14 @@ final class SupabaseManager {
         )
     }
 
+    /// Creates an anonymous auth session and ensures a profile exists for pairing.
+    func signInAnonymously() async throws -> String {
+        let session = try await client.auth.signInAnonymously()
+        let userId = session.user.id.uuidString
+        try await createProfileIfMissing(userId: userId, fullName: "Anonymous Tester", avatarUrl: nil)
+        return userId
+    }
+
     func signOut() async throws {
         try await client.auth.signOut()
     }
@@ -69,6 +77,42 @@ final class SupabaseManager {
         let session = try await client.auth.session
         try await client.from(DB.profiles)
             .insert(NewProfileInsert(id: session.user.id, pairing_code: code))
+            .execute()
+    }
+
+    /// Ensures a profile row exists for the provided user id.
+    func createProfileIfMissing(userId: String, fullName: String, avatarUrl: String?) async throws {
+        _ = avatarUrl
+        guard let uuid = UUID(uuidString: userId) else { return }
+        let existing: [Profile] = try await client.from(DB.profiles)
+            .select()
+            .eq("id", value: uuid)
+            .limit(1)
+            .execute()
+            .value
+        guard existing.first == nil else { return }
+
+        for _ in 0 ..< 10 {
+            do {
+                try await client.from(DB.profiles)
+                    .insert(ProfileInsertWithName(
+                        id: uuid,
+                        pairing_code: Self.randomSixDigitCode(),
+                        display_name: fullName
+                    ))
+                    .execute()
+                return
+            } catch {
+                continue
+            }
+        }
+
+        try await client.from(DB.profiles)
+            .insert(ProfileInsertWithName(
+                id: uuid,
+                pairing_code: Self.randomSixDigitCode(),
+                display_name: fullName
+            ))
             .execute()
     }
 
@@ -354,9 +398,21 @@ final class SupabaseManager {
 // MARK: - DTOs (Data Transfer Objects)
 // Moving these here and adding Sendable fixes the Swift 6 concurrency errors.
 
+extension SupabaseManager {
+    fileprivate static func randomSixDigitCode() -> String {
+        String(format: "%06d", Int.random(in: 0 ... 999_999))
+    }
+}
+
 private nonisolated struct NewProfileInsert: Encodable, Sendable {
     let id: UUID
     let pairing_code: String
+}
+
+private nonisolated struct ProfileInsertWithName: Encodable, Sendable {
+    let id: UUID
+    let pairing_code: String
+    let display_name: String
 }
 
 private nonisolated struct FindPartnerParams: Encodable, Sendable {

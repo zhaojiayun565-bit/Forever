@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import MapKit
 
 // MARK: - Provider & Entry (Shared by both widgets)
 struct Provider: TimelineProvider {
@@ -7,13 +8,14 @@ struct Provider: TimelineProvider {
         SimpleEntry(
             date: Date(),
             distance: 1234.0,
-            batteryLevel: 85,
             noteImage: nil,
             distanceUnit: "mi",
             myName: "Me",
             partnerName: "Partner",
             partnerMessage: "Love you always",
-            anniversaryDate: Date()
+            anniversaryDate: Date(),
+            myCoordinate: CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090),
+            partnerCoordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
         )
     }
 
@@ -21,13 +23,14 @@ struct Provider: TimelineProvider {
         let entry = SimpleEntry(
             date: Date(),
             distance: 1234.0,
-            batteryLevel: 85,
             noteImage: nil,
             distanceUnit: "mi",
             myName: "Me",
             partnerName: "Partner",
             partnerMessage: "Love you always",
-            anniversaryDate: Date()
+            anniversaryDate: Date(),
+            myCoordinate: CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090),
+            partnerCoordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
         )
         completion(entry)
     }
@@ -36,13 +39,24 @@ struct Provider: TimelineProvider {
         Task {
             let defaults = UserDefaults(suiteName: "group.forever.widget")
             let distance = defaults?.double(forKey: "partnerDistance") ?? 0.0
-            let battery = defaults?.integer(forKey: "partnerBattery") ?? 0
             let distanceUnit = defaults?.string(forKey: "distanceUnit") ?? "mi"
             let myName = defaults?.string(forKey: "myName") ?? "Me"
             let partnerName = defaults?.string(forKey: "partnerName") ?? "P"
             let partnerMessage = defaults?.string(forKey: "partnerMessage")
             let anniversaryTimestamp = defaults?.object(forKey: "anniversaryDate") as? Double
             let anniversaryDate = anniversaryTimestamp.map { Date(timeIntervalSince1970: $0) }
+            let myCoordinate = Self.coordinateFromAmbientData(
+                defaults: defaults,
+                explicitLatKey: "myLatitude",
+                explicitLonKey: "myLongitude",
+                jsonKeys: ["myAmbientData", "currentUserAmbientData", "currentUser", "myProfile"]
+            )
+            let partnerCoordinate = Self.coordinateFromAmbientData(
+                defaults: defaults,
+                explicitLatKey: "partnerLatitude",
+                explicitLonKey: "partnerLongitude",
+                jsonKeys: ["partnerAmbientData", "partnerProfileAmbientData", "partnerProfile"]
+            )
 
             var downloadedImage: UIImage? = nil
 
@@ -59,95 +73,166 @@ struct Provider: TimelineProvider {
             let entry = SimpleEntry(
                 date: Date(),
                 distance: distance,
-                batteryLevel: battery,
                 noteImage: downloadedImage,
                 distanceUnit: distanceUnit,
                 myName: myName,
                 partnerName: partnerName,
                 partnerMessage: partnerMessage,
-                anniversaryDate: anniversaryDate
+                anniversaryDate: anniversaryDate,
+                myCoordinate: myCoordinate,
+                partnerCoordinate: partnerCoordinate
             )
             let timeline = Timeline(entries: [entry], policy: .never)
             completion(timeline)
         }
+    }
+
+    /// Reads a coordinate from app-group defaults using explicit keys first, then ambient JSON payloads.
+    private static func coordinateFromAmbientData(
+        defaults: UserDefaults?,
+        explicitLatKey: String,
+        explicitLonKey: String,
+        jsonKeys: [String]
+    ) -> CLLocationCoordinate2D? {
+        guard let defaults else { return nil }
+
+        if let coordinate = coordinateFromExplicitKeys(defaults: defaults, latKey: explicitLatKey, lonKey: explicitLonKey) {
+            return coordinate
+        }
+
+        for key in jsonKeys {
+            if let coordinate = coordinateFromJSONString(defaults: defaults, key: key) {
+                return coordinate
+            }
+        }
+        return nil
+    }
+
+    private static func coordinateFromExplicitKeys(
+        defaults: UserDefaults,
+        latKey: String,
+        lonKey: String
+    ) -> CLLocationCoordinate2D? {
+        guard
+            let lat = defaults.object(forKey: latKey) as? Double,
+            let lon = defaults.object(forKey: lonKey) as? Double
+        else {
+            return nil
+        }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+
+    private static func coordinateFromJSONString(defaults: UserDefaults, key: String) -> CLLocationCoordinate2D? {
+        guard let json = defaults.string(forKey: key), let data = json.data(using: .utf8) else {
+            return nil
+        }
+        guard let object = try? JSONSerialization.jsonObject(with: data) else {
+            return nil
+        }
+        return coordinateFromJSONObject(object)
+    }
+
+    private static func coordinateFromJSONObject(_ object: Any) -> CLLocationCoordinate2D? {
+        if let dictionary = object as? [String: Any] {
+            if
+                let latitude = dictionary["latitude"] as? Double,
+                let longitude = dictionary["longitude"] as? Double
+            {
+                return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            }
+            if
+                let lat = dictionary["lat"] as? Double,
+                let lon = dictionary["lon"] as? Double
+            {
+                return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            }
+        }
+        return nil
     }
 }
 
 struct SimpleEntry: TimelineEntry {
     let date: Date
     let distance: Double
-    let batteryLevel: Int
     let noteImage: UIImage?
     let distanceUnit: String
     let myName: String
     let partnerName: String
     let partnerMessage: String?
     let anniversaryDate: Date?
+    let myCoordinate: CLLocationCoordinate2D?
+    let partnerCoordinate: CLLocationCoordinate2D?
 }
 
-// MARK: - Widget 1: Status View (Battery & Distance)
-struct StatusWidgetView: View {
+// Helper to calculate midpoint between coordinates.
+extension CLLocationCoordinate2D {
+    func midpoint(to other: CLLocationCoordinate2D) -> CLLocationCoordinate2D {
+        CLLocationCoordinate2D(
+            latitude: (latitude + other.latitude) / 2,
+            longitude: (longitude + other.longitude) / 2
+        )
+    }
+}
+
+// MARK: - Widget 1: Distance Map View
+struct DistanceWidgetView: View {
     var entry: Provider.Entry
-
-    private var isKilometers: Bool {
-        entry.distanceUnit == "km"
-    }
-
-    private var convertedDistance: Double {
-        isKilometers ? entry.distance * 1.609344 : entry.distance
-    }
-
-    private var distanceUnitLabel: String {
-        isKilometers ? "km away" : "miles away"
-    }
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color.pink.opacity(0.5), Color.purple.opacity(0.8)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            if let myCoord = entry.myCoordinate, let partnerCoord = entry.partnerCoordinate {
+                Map(interactionModes: []) {
+                    MapPolyline(coordinates: [myCoord, partnerCoord])
+                        .stroke(Color.pink, style: StrokeStyle(lineWidth: 3, dash: [6, 6]))
 
-            VStack(spacing: 8) {
-                HStack {
-                    Image(systemName: "heart.fill")
-                        .foregroundColor(.pink)
-                        .font(.title3)
-                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-                    Spacer()
-                    HStack(spacing: 4) {
-                        Image(systemName: batteryIcon(for: entry.batteryLevel))
-                        Text("\(entry.batteryLevel)%")
-                            .font(.caption2.bold())
+                    Annotation("", coordinate: myCoord) {
+                        WidgetMapAvatar()
                     }
-                    .foregroundColor(.white)
-                    .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
+
+                    Annotation("", coordinate: partnerCoord) {
+                        WidgetMapAvatar()
+                    }
+
+                    Annotation("", coordinate: myCoord.midpoint(to: partnerCoord)) {
+                        Text("\(Int(entry.distance)) \(entry.distanceUnit)")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.thickMaterial)
+                            .clipShape(Capsule())
+                            .shadow(color: .black.opacity(0.15), radius: 5, x: 0, y: 2)
+                    }
                 }
-
-                Spacer()
-
-                Text(entry.distance > 0 ? String(format: "%.0f", convertedDistance) : "--")
-                    .font(.system(size: 42, weight: .black, design: .rounded))
-                    .foregroundColor(.white)
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-
-                Text(distanceUnitLabel)
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(.white.opacity(0.8))
-                    .textCase(.uppercase)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "location.slash.fill")
+                        .font(.title2)
+                        .foregroundColor(.gray)
+                    Text("Waiting for location...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
-            .padding()
         }
-        .containerBackground(for: .widget) { Color.clear }
+        .containerBackground(for: .widget) {
+            Color(UIColor.systemBackground)
+        }
     }
+}
 
-    func batteryIcon(for level: Int) -> String {
-        if level > 80 { return "battery.100" }
-        if level > 50 { return "battery.75" }
-        if level > 20 { return "battery.50" }
-        return "battery.25"
+struct WidgetMapAvatar: View {
+    var body: some View {
+        ZStack {
+            Image(systemName: "person.crop.circle.fill")
+                .resizable()
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, Color(UIColor.systemGray3))
+        }
+        .frame(width: 36, height: 36)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Color(UIColor.systemBackground), lineWidth: 2))
+        .shadow(radius: 3)
     }
 }
 
@@ -385,10 +470,10 @@ struct StatusWidget: Widget {
     let kind: String = "StatusWidget"
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
-            StatusWidgetView(entry: entry)
+            DistanceWidgetView(entry: entry)
         }
-        .configurationDisplayName("Partner Status")
-        .description("See your partner's distance and battery.")
+        .configurationDisplayName("Distance Map")
+        .description("See your distance with a live connection map.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

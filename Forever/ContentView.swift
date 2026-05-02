@@ -42,12 +42,8 @@ struct ContentView: View {
             await state.initializeApp()
         }
         .onChange(of: scenePhase) { _, newPhase in
-            // Upload our location to Supabase, then refresh partner data and widgets.
             if newPhase == .active && state.currentCouple != nil {
-                Task {
-                    try? await AmbientDataManager.shared.syncData()
-                    await state.loadPartnerProfile()
-                }
+                Task { await state.syncAndRefreshWidgets() }
             }
         }
     }

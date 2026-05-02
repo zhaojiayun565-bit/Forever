@@ -3,38 +3,38 @@ import PencilKit
 
 struct DrawingView: View {
     @Environment(AppStateManager.self) private var state
-    @State private var canvasView = PKCanvasView()
+    @State private var drawing = PKDrawing()
     @State private var isSending = false
+    @State private var canvasSize: CGSize = .zero
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ZStack {
-            // 1. The Canvas is now the BACK layer, and it is purely BLACK and OPAQUE.
-            // This forces the physical iPhone GPU to perfectly render the white ink.
-            CanvasRepresentable(canvasView: $canvasView)
+            // Canvas is the back layer — solid black so white ink is always visible.
+            CanvasRepresentable(drawing: $drawing, canvasSize: $canvasSize)
                 .ignoresSafeArea()
 
-            // 2. The Clock is moved ON TOP of the canvas so we can see it.
             VStack(spacing: 0) {
                 LockScreenHeader()
                     .padding(.top, 60)
                 Spacer()
             }
-            // CRITICAL: Let touches pass right through the clock down to the canvas
             .allowsHitTesting(false)
 
-            // 3. The Toolbar stays on top and clickable
             VStack {
                 Spacer()
                 HStack(spacing: 24) {
                     Button {
-                        canvasView.drawing = PKDrawing()
+                        drawing = PKDrawing()
                     } label: {
                         Image(systemName: "trash").font(.title2).foregroundColor(.white)
                     }.disabled(isSending)
 
                     Button {
-                        canvasView.undoManager?.undo()
+                        // Undo is managed by the canvas's own UndoManager internally.
+                        // Clearing the binding triggers updateUIView which assigns a fresh drawing;
+                        // true undo requires the canvas to handle it. We post the undo action.
+                        NotificationCenter.default.post(name: .drawingUndo, object: nil)
                     } label: {
                         Image(systemName: "arrow.uturn.backward").font(.title2).foregroundColor(.white)
                     }.disabled(isSending)
@@ -73,14 +73,18 @@ struct DrawingView: View {
         isSending = true
         defer { isSending = false }
 
-        // This seamlessly extracts the strokes on a transparent background, ignoring the solid black canvas!
-        let image = canvasView.drawing.image(from: canvasView.bounds, scale: 2.0)
+        // Use the captured canvas size; fall back to the main screen bounds.
+        let rect = canvasSize == .zero
+            ? UIScreen.main.bounds
+            : CGRect(origin: .zero, size: canvasSize)
+
+        let image = drawing.image(from: rect, scale: 2.0)
         guard let data = image.pngData() else { return }
 
         do {
             let url = try await SupabaseManager.shared.uploadNoteImage(data: data)
             try await SupabaseManager.shared.updateLatestNoteUrl(url: url)
-            canvasView.drawing = PKDrawing()
+            drawing = PKDrawing()
             dismiss()
         } catch {
             print("🚨 Failed to upload note: \(error)")
@@ -104,22 +108,79 @@ struct LockScreenHeader: View {
     }
 }
 
+// MARK: - Notification for undo
+
+extension Notification.Name {
+    static let drawingUndo = Notification.Name("drawingUndo")
+}
+
+// MARK: - Canvas Representable
+
 struct CanvasRepresentable: UIViewRepresentable {
-    @Binding var canvasView: PKCanvasView
+    @Binding var drawing: PKDrawing
+    @Binding var canvasSize: CGSize
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(drawing: $drawing, canvasSize: $canvasSize)
+    }
 
     func makeUIView(context: Context) -> PKCanvasView {
-        // THE FIX: Solid black and opaque guarantees rendering on physical devices
-        canvasView.backgroundColor = .black
-        canvasView.isOpaque = true
-
-        canvasView.drawingPolicy = .anyInput
-        canvasView.tool = PKInkingTool(.pen, color: .white, width: 5)
-        return canvasView
+        let canvas = PKCanvasView()
+        canvas.backgroundColor = .black
+        canvas.isOpaque = true
+        canvas.drawingPolicy = .anyInput
+        canvas.tool = PKInkingTool(.pen, color: .white, width: 5)
+        canvas.delegate = context.coordinator
+        context.coordinator.canvas = canvas
+        return canvas
     }
 
     func updateUIView(_ uiView: PKCanvasView, context: Context) {
-        // Re-enforce tool and policy in case of SwiftUI re-renders
-        uiView.drawingPolicy = .anyInput
-        uiView.tool = PKInkingTool(.pen, color: .white, width: 5)
+        // Capture the live canvas size for rasterization in sendNote().
+        if uiView.bounds.size != .zero {
+            DispatchQueue.main.async {
+                canvasSize = uiView.bounds.size
+            }
+        }
+
+        // Only push a drawing change into the canvas when SwiftUI drives it
+        // (e.g. clear action). Never touch `tool` here — doing so during an
+        // active stroke cancels it, which is what broke drawing on device.
+        if uiView.drawing != drawing {
+            uiView.drawing = drawing
+        }
+    }
+}
+
+// MARK: - Coordinator
+
+final class Coordinator: NSObject, PKCanvasViewDelegate {
+    private var drawingBinding: Binding<PKDrawing>
+    private var canvasSizeBinding: Binding<CGSize>
+    weak var canvas: PKCanvasView?
+    private var undoObserver: Any?
+
+    init(drawing: Binding<PKDrawing>, canvasSize: Binding<CGSize>) {
+        self.drawingBinding = drawing
+        self.canvasSizeBinding = canvasSize
+        super.init()
+        undoObserver = NotificationCenter.default.addObserver(
+            forName: .drawingUndo,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.canvas?.undoManager?.undo()
+        }
+    }
+
+    deinit {
+        if let observer = undoObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    /// Sync the completed drawing back to SwiftUI after each stroke.
+    func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+        drawingBinding.wrappedValue = canvasView.drawing
     }
 }

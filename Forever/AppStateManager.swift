@@ -62,6 +62,20 @@ final class AppStateManager {
         }
     }
 
+    /// Uploads our location to Supabase, refreshes currentUser so its lat/lon is current,
+    /// then fetches the partner's profile and reloads widget data.
+    func syncAndRefreshWidgets() async {
+        do {
+            try await AmbientDataManager.shared.syncData()
+            if let updated = try? await supabase.fetchProfile() {
+                currentUser = updated
+            }
+        } catch {
+            print("🚨 Location sync error: \(error)")
+        }
+        await loadPartnerProfile()
+    }
+
     /// Fetches the partner's profile and updates the widget data
     func loadPartnerProfile() async {
         guard let couple = currentCouple, let myId = currentUser?.id else { return }

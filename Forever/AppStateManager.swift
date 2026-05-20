@@ -23,6 +23,7 @@ final class AppStateManager {
     /// Set after saving a memory so the map can animate to it; cleared by the map after handling.
     var newlyAddedLocation: NewlyAddedMemoryCoordinate?
     var isLoading = true
+    private var pairingListenerTask: Task<Void, Never>?
 
     init(supabase: SupabaseManager = .shared) {
         self.supabase = supabase
@@ -46,6 +47,9 @@ final class AppStateManager {
                 currentUser = profile
                 currentCouple = try await supabase.fetchCurrentCouple()
                 await loadPartnerProfile()
+                if currentCouple == nil {
+                    subscribeToCoupleLink()
+                }
                 print("✅ SUCCESS: Profile loaded.")
             } else {
                 // Not logged in. Clear state so LoginView shows.
@@ -109,7 +113,7 @@ final class AppStateManager {
 
     /// Pushes partner fields to the App Group UserDefaults and reloads widgets only when values change.
     private func updateWidgetData(partner: Profile) {
-        guard let defaults = UserDefaults(suiteName: "group.forever.widget") else { return }
+        guard let defaults = UserDefaults(suiteName: "group.com.jiayunzhao.Forever") else { return }
 
         var didChange = false
 
@@ -204,6 +208,8 @@ final class AppStateManager {
 
     /// After the user enters a partner code, links accounts and refreshes `currentCouple`.
     func linkWithPartner(code: String) async throws {
+        pairingListenerTask?.cancel()
+        pairingListenerTask = nil
         let newlyFetchedCouple = try await supabase.linkPartner(code: code)
         currentCouple = newlyFetchedCouple
         guard let user = currentUser else { return }
@@ -226,10 +232,37 @@ final class AppStateManager {
             currentCouple = nil
             partnerProfile = nil
             memories = []
+            subscribeToCoupleLink()
 
             print("✅ Successfully unpaired. UI should now route to PairingView.")
         } catch {
             print("🚨 Failed to unpair: \(error)")
+        }
+    }
+
+    /// Subscribes to Realtime INSERT events on `couples` so the waiting partner's app
+    /// transitions automatically when the other person enters their code.
+    private func subscribeToCoupleLink() {
+        guard let userId = currentUser?.id else { return }
+        pairingListenerTask?.cancel()
+        pairingListenerTask = Task {
+            let channel = supabase.client.realtimeV2
+                .channel("couple-link-\(userId)")
+            let inserts = await channel.postgresChange(
+                InsertAction.self, schema: "public", table: "couples"
+            )
+            await channel.subscribe()
+            defer { Task { await self.supabase.client.realtimeV2.removeChannel(channel) } }
+
+            for await _ in inserts {
+                guard !Task.isCancelled else { return }
+                if let couple = try? await supabase.fetchCurrentCouple() {
+                    currentCouple = couple
+                    await loadPartnerProfile()
+                    await loadMemories()
+                }
+                return
+            }
         }
     }
 

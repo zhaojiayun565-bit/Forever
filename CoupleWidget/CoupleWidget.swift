@@ -47,7 +47,7 @@ struct Provider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
         Task {
-            let defaults = UserDefaults(suiteName: "group.forever.widget")
+            let defaults = UserDefaults(suiteName: "group.com.jiayunzhao.Forever")
             let distance = defaults?.double(forKey: "partnerDistance") ?? 0.0
             let distanceUnit = defaults?.string(forKey: "distanceUnit") ?? "mi"
             let myName = defaults?.string(forKey: "myName") ?? "Me"

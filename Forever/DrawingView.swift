@@ -136,17 +136,17 @@ struct CanvasRepresentable: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PKCanvasView, context: Context) {
-        // Capture the live canvas size for rasterization in sendNote().
-        if uiView.bounds.size != .zero {
+        // 1. Prevent the infinite layout loop by checking if the size actually changed
+        if uiView.bounds.size != .zero && canvasSize != uiView.bounds.size {
             DispatchQueue.main.async {
                 canvasSize = uiView.bounds.size
             }
         }
 
-        // Only push a drawing change into the canvas when SwiftUI drives it
-        // (e.g. clear action). Never touch `tool` here — doing so during an
-        // active stroke cancels it, which is what broke drawing on device.
-        if uiView.drawing != drawing {
+        // 2. Prevent touch gesture cancellation
+        // Only push drawing changes to the canvas if the SwiftUI state is fundamentally
+        // cleared (e.g., via the Trash button). NEVER update during a live stroke.
+        if drawing.strokes.isEmpty && !uiView.drawing.strokes.isEmpty {
             uiView.drawing = drawing
         }
     }

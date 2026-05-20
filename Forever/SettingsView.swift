@@ -32,7 +32,7 @@ struct SettingsView: View {
     }
 
     private func syncDistanceUnitToWidgetDefaults() {
-        guard let defaults = UserDefaults(suiteName: "group.forever.widget") else { return }
+        guard let defaults = UserDefaults(suiteName: "group.com.jiayunzhao.Forever") else { return }
         let unit = normalizedDistanceUnit
         if defaults.string(forKey: "distanceUnit") != unit {
             defaults.set(unit, forKey: "distanceUnit")

@@ -25,6 +25,7 @@ final class SupabaseManager {
     static let shared = SupabaseManager()
 
     let client: SupabaseClient
+    private var drawingChannel: RealtimeChannelV2?
 
     init(
         supabaseURL: URL = URL(string: "https://cdcnzkbxlyoxukxizfmd.supabase.co")!,
@@ -392,6 +393,41 @@ final class SupabaseManager {
             .update(MsgDTO(latest_message: message))
             .eq("id", value: session.user.id)
             .execute()
+    }
+
+    // MARK: - Realtime Drawing Broadcast
+
+    /// Joins a Supabase Realtime channel for broadcasting and receiving live drawing updates.
+    @MainActor
+    func joinDrawingChannel(coupleId: UUID, onReceive: @escaping (Data) -> Void) async {
+        let channelName = "drawing_\(coupleId.uuidString)"
+        let channel = client.channel(channelName)
+
+        // onBroadcast callback receives JSONObject ([String: AnyJSON])
+        channel.onBroadcast(event: "live_stroke") { payload in
+            guard let base64 = payload["data"]?.stringValue,
+                  let data = Data(base64Encoded: base64) else { return }
+            onReceive(data)
+        }
+
+        self.drawingChannel = channel
+        try? await channel.subscribeWithError()
+    }
+
+    /// Broadcasts the current PKDrawing data to the partner (fire-and-forget).
+    func broadcastDrawing(data: Data) async {
+        guard let channel = drawingChannel else { return }
+        let base64 = data.base64EncodedString()
+        // broadcast(event:message:some Codable) throws if JSON encoding fails; safe to ignore
+        try? await channel.broadcast(event: "live_stroke", message: ["data": base64])
+    }
+
+    /// Unsubscribes from the drawing channel when the view disappears.
+    func leaveDrawingChannel() async {
+        if let channel = drawingChannel {
+            await channel.unsubscribe()
+            drawingChannel = nil
+        }
     }
 }
 

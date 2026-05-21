@@ -3,16 +3,17 @@ import PencilKit
 
 struct DrawingView: View {
     @Environment(AppStateManager.self) private var state
-    @State private var drawing = PKDrawing()
+    @State private var canvasView = PKCanvasView()
     @State private var isSending = false
-    @State private var canvasSize: CGSize = .zero
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ZStack {
             // Canvas is the back layer — solid black so white ink is always visible.
-            CanvasRepresentable(drawing: $drawing, canvasSize: $canvasSize)
-                .ignoresSafeArea()
+            DrawingCanvas(canvasView: $canvasView) { data in
+                Task { await SupabaseManager.shared.broadcastDrawing(data: data) }
+            }
+            .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 LockScreenHeader()
@@ -25,16 +26,13 @@ struct DrawingView: View {
                 Spacer()
                 HStack(spacing: 24) {
                     Button {
-                        drawing = PKDrawing()
+                        canvasView.drawing = PKDrawing()
                     } label: {
                         Image(systemName: "trash").font(.title2).foregroundColor(.white)
                     }.disabled(isSending)
 
                     Button {
-                        // Undo is managed by the canvas's own UndoManager internally.
-                        // Clearing the binding triggers updateUIView which assigns a fresh drawing;
-                        // true undo requires the canvas to handle it. We post the undo action.
-                        NotificationCenter.default.post(name: .drawingUndo, object: nil)
+                        canvasView.undoManager?.undo()
                     } label: {
                         Image(systemName: "arrow.uturn.backward").font(.title2).foregroundColor(.white)
                     }.disabled(isSending)
@@ -67,24 +65,42 @@ struct DrawingView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .task {
+            if let couple = try? await SupabaseManager.shared.fetchCurrentCouple() {
+                await SupabaseManager.shared.joinDrawingChannel(coupleId: couple.id) { incomingData in
+                    applyPartnerDrawing(data: incomingData)
+                }
+            }
+        }
+        .onDisappear {
+            Task { await SupabaseManager.shared.leaveDrawingChannel() }
+        }
+    }
+
+    /// Applies incoming partner drawing by temporarily detaching the delegate to prevent echo broadcast.
+    @MainActor
+    private func applyPartnerDrawing(data: Data) {
+        guard let partnerDrawing = try? PKDrawing(data: data) else { return }
+        let currentDelegate = canvasView.delegate
+        canvasView.delegate = nil
+        canvasView.drawing = partnerDrawing
+        canvasView.delegate = currentDelegate
     }
 
     private func sendNote() async {
         isSending = true
         defer { isSending = false }
 
-        // Use the captured canvas size; fall back to the main screen bounds.
-        let rect = canvasSize == .zero
-            ? UIScreen.main.bounds
-            : CGRect(origin: .zero, size: canvasSize)
+        let size = canvasView.bounds.size
+        let rect = size == .zero ? UIScreen.main.bounds : CGRect(origin: .zero, size: size)
 
-        let image = drawing.image(from: rect, scale: 2.0)
+        let image = canvasView.drawing.image(from: rect, scale: 2.0)
         guard let data = image.pngData() else { return }
 
         do {
             let url = try await SupabaseManager.shared.uploadNoteImage(data: data)
             try await SupabaseManager.shared.updateLatestNoteUrl(url: url)
-            drawing = PKDrawing()
+            canvasView.drawing = PKDrawing()
             dismiss()
         } catch {
             print("🚨 Failed to upload note: \(error)")
@@ -108,79 +124,46 @@ struct LockScreenHeader: View {
     }
 }
 
-// MARK: - Notification for undo
-
-extension Notification.Name {
-    static let drawingUndo = Notification.Name("drawingUndo")
-}
-
 // MARK: - Canvas Representable
 
-struct CanvasRepresentable: UIViewRepresentable {
-    @Binding var drawing: PKDrawing
-    @Binding var canvasSize: CGSize
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(drawing: $drawing, canvasSize: $canvasSize)
-    }
+struct DrawingCanvas: UIViewRepresentable {
+    @Binding var canvasView: PKCanvasView
+    var onDrawingChanged: (Data) -> Void
 
     func makeUIView(context: Context) -> PKCanvasView {
-        let canvas = PKCanvasView()
-        canvas.backgroundColor = .black
-        canvas.isOpaque = true
-        canvas.drawingPolicy = .anyInput
-        canvas.tool = PKInkingTool(.pen, color: .white, width: 5)
-        canvas.delegate = context.coordinator
-        context.coordinator.canvas = canvas
-        return canvas
+        canvasView.delegate = context.coordinator
+        canvasView.drawingPolicy = .anyInput
+        canvasView.backgroundColor = .black
+        canvasView.isOpaque = true
+        canvasView.tool = PKInkingTool(.pen, color: .white, width: 5)
+        canvasView.bouncesZoom = false
+        return canvasView
     }
 
     func updateUIView(_ uiView: PKCanvasView, context: Context) {
-        // 1. Prevent the infinite layout loop by checking if the size actually changed
-        if uiView.bounds.size != .zero && canvasSize != uiView.bounds.size {
-            DispatchQueue.main.async {
-                canvasSize = uiView.bounds.size
-            }
-        }
-
-        // 2. Prevent touch gesture cancellation
-        // Only push drawing changes to the canvas if the SwiftUI state is fundamentally
-        // cleared (e.g., via the Trash button). NEVER update during a live stroke.
-        if drawing.strokes.isEmpty && !uiView.drawing.strokes.isEmpty {
-            uiView.drawing = drawing
-        }
-    }
-}
-
-// MARK: - Coordinator
-
-final class Coordinator: NSObject, PKCanvasViewDelegate {
-    private var drawingBinding: Binding<PKDrawing>
-    private var canvasSizeBinding: Binding<CGSize>
-    weak var canvas: PKCanvasView?
-    private var undoObserver: Any?
-
-    init(drawing: Binding<PKDrawing>, canvasSize: Binding<CGSize>) {
-        self.drawingBinding = drawing
-        self.canvasSizeBinding = canvasSize
-        super.init()
-        undoObserver = NotificationCenter.default.addObserver(
-            forName: .drawingUndo,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.canvas?.undoManager?.undo()
-        }
+        // Intentionally empty — all mutations go directly through canvasView.
     }
 
-    deinit {
-        if let observer = undoObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
     }
 
-    /// Sync the completed drawing back to SwiftUI after each stroke.
-    func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-        drawingBinding.wrappedValue = canvasView.drawing
+    // MARK: - Coordinator
+
+    final class Coordinator: NSObject, PKCanvasViewDelegate {
+        var parent: DrawingCanvas
+        private var lastBroadcastTime: Date = .distantPast
+        private let throttleInterval: TimeInterval = 0.2 // max 5 broadcasts/second
+
+        init(_ parent: DrawingCanvas) {
+            self.parent = parent
+        }
+
+        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            let now = Date()
+            guard now.timeIntervalSince(lastBroadcastTime) > throttleInterval else { return }
+            lastBroadcastTime = now
+            parent.onDrawingChanged(canvasView.drawing.dataRepresentation())
+        }
     }
 }

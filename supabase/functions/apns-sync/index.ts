@@ -66,17 +66,24 @@ serve(async (req) => {
 
     const apnsUrl = `https://api.sandbox.push.apple.com/3/device/${partner.device_token}`
 
-    console.log("📤 Sending silent push to Apple...")
+    console.log("📤 Sending push to Apple...")
     const pushResponse = await fetch(apnsUrl, {
       method: "POST",
       headers: {
         "authorization": `bearer ${jwt}`,
         "apns-topic": bundleId,
-        "apns-push-type": "background",
-        "apns-priority": "5", 
+        "apns-push-type": "alert",
+        "apns-priority": "10",
       },
       body: JSON.stringify({
-        aps: { "content-available": 1 },
+        aps: {
+          "alert": {
+            "title": "New Drawing 🎨",
+            "body": record.latest_message ? record.latest_message : "Your partner sent you a new drawing!"
+          },
+          "sound": "default",
+          "content-available": 1
+        },
         note_url: record.latest_note_url,
         latest_message: record.latest_message
       })
@@ -88,7 +95,7 @@ serve(async (req) => {
         return new Response(`APNs error: ${errText}`, { status: 500 })
     }
 
-    console.log("✅ Silent push successfully sent to Apple!")
+    console.log("✅ Push successfully sent to Apple!")
     return new Response(JSON.stringify({ success: true }), { status: 200 })
 
   } catch (error) {

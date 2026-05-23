@@ -22,42 +22,40 @@ struct DrawingView: View {
             }
             .allowsHitTesting(false)
 
-            VStack {
-                Spacer()
-                HStack(spacing: 24) {
-                    Button {
-                        canvasView.drawing = PKDrawing()
-                    } label: {
-                        Image(systemName: "trash").font(.title2).foregroundColor(.white)
-                    }.disabled(isSending)
+            HStack(spacing: 24) {
+                Button {
+                    canvasView.drawing = PKDrawing()
+                } label: {
+                    Image(systemName: "trash").font(.title2).foregroundColor(.white)
+                }.disabled(isSending)
 
-                    Button {
-                        canvasView.undoManager?.undo()
-                    } label: {
-                        Image(systemName: "arrow.uturn.backward").font(.title2).foregroundColor(.white)
-                    }.disabled(isSending)
+                Button {
+                    canvasView.undoManager?.undo()
+                } label: {
+                    Image(systemName: "arrow.uturn.backward").font(.title2).foregroundColor(.white)
+                }.disabled(isSending)
 
-                    Button {
-                        Task { await sendNote() }
-                    } label: {
-                        HStack {
-                            Text(isSending ? "Sending..." : "Send")
-                                .fontWeight(.bold)
-                            if !isSending { Image(systemName: "paperplane.fill") }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .background(Color.white)
-                        .foregroundColor(.black)
-                        .clipShape(Capsule())
-                    }.disabled(isSending)
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 14)
-                .background(.ultraThinMaterial, in: Capsule())
-                .environment(\.colorScheme, .dark)
-                .padding(.bottom, 40)
+                Button {
+                    Task { await sendNote() }
+                } label: {
+                    HStack {
+                        Text(isSending ? "Sending..." : "Send")
+                            .fontWeight(.bold)
+                        if !isSending { Image(systemName: "paperplane.fill") }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(Color.white)
+                    .foregroundColor(.black)
+                    .clipShape(Capsule())
+                }.disabled(isSending)
             }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
+            .background(.ultraThinMaterial, in: Capsule())
+            .environment(\.colorScheme, .dark)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .padding(.bottom, 40)
 
             if isSending {
                 Color.black.opacity(0.5).ignoresSafeArea()

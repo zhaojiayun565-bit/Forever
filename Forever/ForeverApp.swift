@@ -6,6 +6,7 @@
 //
 
 import Kingfisher
+import SwiftData
 import SwiftUI
 
 @main
@@ -27,5 +28,6 @@ struct ForeverApp: App {
             ContentView()
                 .environment(appState)
         }
+        .modelContainer(SharedDatabase.shared)
     }
 }

@@ -78,24 +78,6 @@
 			);
 			target = E08558EF2FC53EAB0092B500 /* ForeverShare */;
 		};
-		E08559012FC540000092B500 /* Exceptions for "Shared" folder in "CoupleWidgetExtension" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-			);
-			target = E08558862F82E8850092B500 /* CoupleWidgetExtension */;
-		};
-		E08559022FC540000092B500 /* Exceptions for "Shared" folder in "Forever" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-			);
-			target = E08558212F7F16EF0092B500 /* Forever */;
-		};
-		E08559032FC540000092B500 /* Exceptions for "Shared" folder in "ForeverShare" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-			);
-			target = E08558EF2FC53EAB0092B500 /* ForeverShare */;
-		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -125,11 +107,6 @@
 		};
 		E08559002FC540000092B500 /* Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				E08559022FC540000092B500 /* Exceptions for "Shared" folder in "Forever" target */,
-				E08559012FC540000092B500 /* Exceptions for "Shared" folder in "CoupleWidgetExtension" target */,
-				E08559032FC540000092B500 /* Exceptions for "Shared" folder in "ForeverShare" target */,
-			);
 			path = Shared;
 			sourceTree = "<group>";
 		};

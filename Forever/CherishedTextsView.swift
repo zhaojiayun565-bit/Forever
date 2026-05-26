@@ -5,27 +5,29 @@ import UIKit
 
 struct CherishedTextsView: View {
     @Query(sort: \CherishedText.dateAdded, order: .reverse) private var cherishedTexts: [CherishedText]
-    @Environment(\.modelContext) private var modelContext
 
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isImporting = false
 
     var body: some View {
         NavigationStack {
-            Group {
+            ZStack {
+                Color(.systemGroupedBackground)
+                    .ignoresSafeArea()
+
                 if cherishedTexts.isEmpty && !isImporting {
-                    ContentUnavailableView(
-                        "No Cherished Texts",
-                        systemImage: "text.bubble",
-                        description: Text("Save screenshots from the share sheet, or add one here.")
-                    )
+                    emptyState
                 } else {
-                    List {
-                        ForEach(cherishedTexts) { cherishedText in
-                            CherishedTextRow(cherishedText: cherishedText)
+                    ScrollView {
+                        LazyVStack(spacing: 20) {
+                            ForEach(cherishedTexts) { cherishedText in
+                                CherishedTextCard(cherishedText: cherishedText)
+                            }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
                     }
-                    .listStyle(.insetGrouped)
+                    .scrollIndicators(.hidden)
                 }
             }
             .navigationTitle("Cherished Texts")
@@ -35,16 +37,17 @@ struct CherishedTextsView: View {
                         selection: $selectedPhoto,
                         matching: .screenshots
                     ) {
-                        Image(systemName: "plus")
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.pink)
                     }
                     .disabled(isImporting)
                 }
             }
             .overlay {
                 if isImporting {
-                    ProgressView("Extracting text…")
-                        .padding(24)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    importOverlay
                 }
             }
             .onChange(of: selectedPhoto) { _, newItem in
@@ -54,7 +57,43 @@ struct CherishedTextsView: View {
         }
     }
 
-    /// Loads a screenshot, runs OCR, and persists the result to the shared SwiftData store.
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label("No Cherished Texts", systemImage: "heart.text.square")
+        } description: {
+            Text("Share a screenshot from Messages, or tap + to import an older one.")
+        } actions: {
+            PhotosPicker(
+                selection: $selectedPhoto,
+                matching: .screenshots
+            ) {
+                Text("Import Screenshot")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.pink)
+            .disabled(isImporting)
+        }
+    }
+
+    private var importOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.18)
+                .ignoresSafeArea()
+
+            VStack(spacing: 14) {
+                ProgressView()
+                    .controlSize(.large)
+                Text("Reading screenshot…")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(28)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+    }
+
+    /// Loads a screenshot, runs OCR, and persists it to the shared App Group store.
+    @MainActor
     private func importScreenshot(from item: PhotosPickerItem) async {
         isImporting = true
         defer {
@@ -70,10 +109,54 @@ struct CherishedTextsView: View {
                 imageData: imageData,
                 extractedText: extractedText
             )
-            modelContext.insert(cherishedText)
-            try modelContext.save()
+
+            let context = SharedDatabase.context
+            context.insert(cherishedText)
+            try context.save()
         } catch {
             // OCR or persistence failed.
+        }
+    }
+}
+
+private struct CherishedTextCard: View {
+    let cherishedText: CherishedText
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let uiImage = UIImage(data: cherishedText.imageData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.black.opacity(0.04))
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                if cherishedText.extractedText.isEmpty {
+                    Text("No text detected")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                } else {
+                    Text(cherishedText.extractedText)
+                        .font(.system(.body, design: .serif))
+                        .foregroundStyle(.primary)
+                        .lineLimit(5)
+                        .multilineTextAlignment(.leading)
+                }
+
+                Text(cherishedText.dateAdded.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(16)
+        }
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: .black.opacity(0.06), radius: 20, x: 0, y: 10)
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(.white.opacity(0.6), lineWidth: 0.5)
         }
     }
 }
@@ -85,36 +168,6 @@ private struct ScreenshotImageData: Transferable {
         DataRepresentation(importedContentType: .image) { ScreenshotImageData(data: $0) }
         DataRepresentation(importedContentType: .jpeg) { ScreenshotImageData(data: $0) }
         DataRepresentation(importedContentType: .png) { ScreenshotImageData(data: $0) }
-    }
-}
-
-private struct CherishedTextRow: View {
-    let cherishedText: CherishedText
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let uiImage = UIImage(data: cherishedText.imageData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFit()
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-
-            if cherishedText.extractedText.isEmpty {
-                Text("No text detected")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(cherishedText.extractedText)
-                    .font(.body)
-                    .lineLimit(6)
-            }
-
-            Text(cherishedText.dateAdded.formatted(date: .abbreviated, time: .shortened))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 4)
     }
 }
 

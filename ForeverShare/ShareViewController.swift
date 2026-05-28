@@ -49,7 +49,7 @@ class ShareViewController: SLComposeServiceViewController {
 
             for provider in attachments where provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
                 do {
-                    return try await provider.loadDataRepresentation(for: UTType.image)
+                    return try await loadImageData(from: provider)
                 } catch {
                     continue
                 }
@@ -57,5 +57,18 @@ class ShareViewController: SLComposeServiceViewController {
         }
 
         return nil
+    }
+
+    /// Loads raw image bytes from a share-sheet item provider.
+    private func loadImageData(from provider: NSItemProvider) async throws -> Data? {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.loadDataRepresentation(for: UTType.image) { data, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: data)
+                }
+            }
+        }
     }
 }

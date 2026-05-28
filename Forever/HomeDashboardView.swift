@@ -64,6 +64,37 @@ struct HomeDashboardView: View {
                     // 2. THE HERO CARD
                     DaysTogetherHeroCard()
 
+                    NavigationLink {
+                        CherishedTextsView()
+                    } label: {
+                        HStack(spacing: 16) {
+                            Image(systemName: "message.heart.fill")
+                                .font(.title2)
+                                .foregroundStyle(.pink)
+                                .frame(width: 44, height: 44)
+                                .background(.pink.opacity(0.15), in: Circle())
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Cherished Texts")
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                Text("Our favorite saved messages")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(20)
+                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .shadow(color: .black.opacity(0.04), radius: 12, x: 0, y: 6)
+                    }
+                    .buttonStyle(.plain)
+
                     // 3. THE MAP STATS CARD
                     BubblyCard {
                         VStack(spacing: 8) {

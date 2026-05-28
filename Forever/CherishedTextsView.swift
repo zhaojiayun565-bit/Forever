@@ -10,50 +10,48 @@ struct CherishedTextsView: View {
     @State private var isImporting = false
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color(.systemGroupedBackground)
-                    .ignoresSafeArea()
+        ZStack {
+            Color(.systemGroupedBackground)
+                .ignoresSafeArea()
 
-                if cherishedTexts.isEmpty && !isImporting {
-                    emptyState
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 20) {
-                            ForEach(cherishedTexts) { cherishedText in
-                                CherishedTextCard(cherishedText: cherishedText)
-                            }
+            if cherishedTexts.isEmpty && !isImporting {
+                emptyState
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 20) {
+                        ForEach(cherishedTexts) { cherishedText in
+                            CherishedTextCard(cherishedText: cherishedText)
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
                     }
-                    .scrollIndicators(.hidden)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
                 }
+                .scrollIndicators(.hidden)
             }
-            .navigationTitle("Cherished Texts")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    PhotosPicker(
-                        selection: $selectedPhoto,
-                        matching: .screenshots
-                    ) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title3)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(.pink)
-                    }
-                    .disabled(isImporting)
+        }
+        .navigationTitle("Cherished Texts")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                PhotosPicker(
+                    selection: $selectedPhoto,
+                    matching: .screenshots
+                ) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.pink)
                 }
+                .disabled(isImporting)
             }
-            .overlay {
-                if isImporting {
-                    importOverlay
-                }
+        }
+        .overlay {
+            if isImporting {
+                importOverlay
             }
-            .onChange(of: selectedPhoto) { _, newItem in
-                guard let newItem else { return }
-                Task { await importScreenshot(from: newItem) }
-            }
+        }
+        .onChange(of: selectedPhoto) { _, newItem in
+            guard let newItem else { return }
+            Task { await importScreenshot(from: newItem) }
         }
     }
 
@@ -172,6 +170,8 @@ private struct ScreenshotImageData: Transferable {
 }
 
 #Preview {
-    CherishedTextsView()
-        .modelContainer(SharedDatabase.shared)
+    NavigationStack {
+        CherishedTextsView()
+    }
+    .modelContainer(SharedDatabase.shared)
 }

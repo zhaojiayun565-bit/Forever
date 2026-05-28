@@ -10,8 +10,22 @@ class ShareViewController: SLComposeServiceViewController {
     }
 
     override func didSelectPost() {
-        Task { @MainActor in
-            if let imageData = await extractImageData(from: extensionContext) {
+        // Prevent default dismissal; we complete the request manually after processing.
+        guard let extensionContext else { return }
+
+        guard let itemProvider = imageItemProvider(from: extensionContext) else {
+            extensionContext.completeRequest(returningItems: nil, completionHandler: nil)
+            return
+        }
+
+        itemProvider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil) { [weak self] item, error in
+            Task { @MainActor in
+                defer {
+                    self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+                }
+
+                guard error == nil, let imageData = Self.imageData(from: item) else { return }
+
                 do {
                     let extractedText = try await VisionHelper.extractText(from: imageData)
                     let cherishedText = CherishedText(
@@ -19,15 +33,13 @@ class ShareViewController: SLComposeServiceViewController {
                         extractedText: extractedText
                     )
 
-                    let context = SharedDatabase.context
+                    let context = SharedDatabase.shared.mainContext
                     context.insert(cherishedText)
                     try context.save()
                 } catch {
-                    // OCR or persistence failed; still dismiss the extension.
+                    // OCR or persistence failed; defer still dismisses the extension.
                 }
             }
-
-            self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
         }
     }
 
@@ -35,12 +47,9 @@ class ShareViewController: SLComposeServiceViewController {
         []
     }
 
-    /// Loads the first image attachment from the share extension context.
-    @MainActor
-    private func extractImageData(from extensionContext: NSExtensionContext?) async -> Data? {
-        guard
-            let inputItems = extensionContext?.inputItems as? [NSExtensionItem]
-        else {
+    /// Returns the first attachment that conforms to an image type.
+    private func imageItemProvider(from extensionContext: NSExtensionContext) -> NSItemProvider? {
+        guard let inputItems = extensionContext.inputItems as? [NSExtensionItem] else {
             return nil
         }
 
@@ -48,27 +57,27 @@ class ShareViewController: SLComposeServiceViewController {
             guard let attachments = item.attachments else { continue }
 
             for provider in attachments where provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-                do {
-                    return try await loadImageData(from: provider)
-                } catch {
-                    continue
-                }
+                return provider
             }
         }
 
         return nil
     }
 
-    /// Loads raw image bytes from a share-sheet item provider.
-    private func loadImageData(from provider: NSItemProvider) async throws -> Data? {
-        try await withCheckedThrowingContinuation { continuation in
-            provider.loadDataRepresentation(for: UTType.image) { data, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: data)
-                }
-            }
+    /// Normalizes share-sheet payloads into raw image bytes.
+    private static func imageData(from item: NSSecureCoding?) -> Data? {
+        if let data = item as? Data {
+            return data
         }
+
+        if let url = item as? URL, let data = try? Data(contentsOf: url) {
+            return data
+        }
+
+        if let image = item as? UIImage {
+            return image.jpegData(compressionQuality: 0.9) ?? image.pngData()
+        }
+
+        return nil
     }
 }

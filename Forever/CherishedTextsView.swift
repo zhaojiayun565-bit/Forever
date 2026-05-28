@@ -6,8 +6,16 @@ import UIKit
 struct CherishedTextsView: View {
     @Query(sort: \CherishedText.dateAdded, order: .reverse) private var cherishedTexts: [CherishedText]
 
+    @State private var searchText = ""
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isImporting = false
+
+    private var filteredCherishedTexts: [CherishedText] {
+        guard !searchText.isEmpty else { return cherishedTexts }
+        return cherishedTexts.filter {
+            $0.extractedText.localizedCaseInsensitiveContains(searchText)
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -19,7 +27,7 @@ struct CherishedTextsView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 20) {
-                        ForEach(cherishedTexts) { cherishedText in
+                        ForEach(filteredCherishedTexts) { cherishedText in
                             CherishedTextCard(cherishedText: cherishedText)
                         }
                     }
@@ -27,6 +35,7 @@ struct CherishedTextsView: View {
                     .padding(.vertical, 12)
                 }
                 .scrollIndicators(.hidden)
+                .searchable(text: $searchText, prompt: "Search memories...")
             }
         }
         .navigationTitle("Cherished Texts")

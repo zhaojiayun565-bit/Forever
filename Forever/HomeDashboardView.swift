@@ -5,7 +5,6 @@ struct HomeDashboardView: View {
     @Environment(AppStateManager.self) private var state
     @AppStorage("distanceUnit") private var distanceUnit = "mi"
     @State private var lockScreenMessage = ""
-    @State private var isDrawing = false
     
     private var distanceInMiles: Double? {
         guard
@@ -116,32 +115,6 @@ struct HomeDashboardView: View {
                         .frame(maxWidth: .infinity)
                     }
                     
-                    // ACTION: Draw Note
-                    Button {
-                        isDrawing = true
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Draw a Note")
-                                    .font(.system(.title3, design: .rounded).weight(.bold))
-                                Text("Send to their Home Screen")
-                                    .font(.subheadline)
-                                    .opacity(0.8)
-                            }
-                            Spacer()
-                            Image(systemName: "paintbrush.pointed.fill")
-                                .font(.title)
-                        }
-                        .padding(24)
-                        .foregroundStyle(.white)
-                        .background(
-                            LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                        .shadow(color: .purple.opacity(0.3), radius: 20, x: 0, y: 10)
-                    }
-                    .buttonStyle(BubblyButtonStyle())
-                    
                     // ACTION: Lock Screen Message
                     BubblyCard {
                         VStack(alignment: .leading, spacing: 16) {
@@ -177,9 +150,6 @@ struct HomeDashboardView: View {
             }
             .background(Color(UIColor.systemGroupedBackground))
             .navigationTitle("Us")
-            .fullScreenCover(isPresented: $isDrawing) {
-                DrawingView()
-            }
         }
     }
 }

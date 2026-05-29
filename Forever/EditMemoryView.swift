@@ -62,24 +62,22 @@ struct EditMemoryView: View {
                             }
                             
                             ForEach(existingUrls, id: \.self) { url in
-                                ZStack(alignment: .topTrailing) {
+                                ZStack(alignment: .topLeading) {
                                     KFImage.url(url)
                                         .resizable()
                                         .scaledToFill()
                                         .frame(width: 100, height: 100)
                                         .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    Button {
+                                    EditModeRemoveBadge {
                                         existingUrls.removeAll { $0 == url }
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .foregroundStyle(.white)
-                                            .background(Circle().fill(.black))
-                                            .padding(4)
                                     }
+                                    .offset(x: -6, y: -6)
                                 }
                             }
                         }
-                        .padding(.vertical, 8)
+                        .padding(.top, 10)
+                        .padding(.bottom, 8)
+                        .padding(.leading, 6)
                     }
                     .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 0))
                     .listRowBackground(Color.clear)

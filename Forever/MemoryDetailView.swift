@@ -9,43 +9,58 @@ struct MemoryDetailView: View {
 
     @State private var showingDeleteAlert = false
     @State private var isDeleting = false
+    @State private var currentImageIndex = 0
 
     @State private var showingEditSheet = false
     @State private var actionErrorMessage: String?
 
+    private var hasNote: Bool {
+        memory.note?.isEmpty == false
+    }
+
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
+            ZStack {
                 Color.black.ignoresSafeArea()
 
-                TabView {
-                    ForEach(memory.imageUrls, id: \.self) { url in
-                        KFImage.url(url)
-                            .placeholder { ProgressView().tint(.white) }
-                            .fade(duration: 0.25)
-                            .resizable()
-                            .scaledToFit()
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                            .padding(.horizontal, 8)
+                VStack(spacing: 0) {
+                    TabView(selection: $currentImageIndex) {
+                        ForEach(Array(memory.imageUrls.enumerated()), id: \.element) { index, url in
+                            KFImage.url(url)
+                                .placeholder { ProgressView().tint(.white) }
+                                .fade(duration: 0.25)
+                                .resizable()
+                                .scaledToFit()
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .padding(.horizontal, 8)
+                                .tag(index)
+                        }
                     }
-                }
-                .tabViewStyle(.page(indexDisplayMode: memory.imageUrls.count > 1 ? .always : .never))
-                .padding(.bottom, memory.note?.isEmpty == false ? 100 : 40)
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(maxHeight: .infinity)
 
-                if let note = memory.note, !note.isEmpty {
-                    VStack {
+                    if memory.imageUrls.count > 1 {
+                        MemoryPageIndicator(
+                            count: memory.imageUrls.count,
+                            selection: currentImageIndex
+                        )
+                        .padding(.top, 12)
+                        .padding(.bottom, hasNote ? 16 : 24)
+                    }
+
+                    if let note = memory.note, !note.isEmpty {
                         Text(note)
                             .font(.system(.body, design: .rounded))
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
                             .padding(20)
+                            .frame(maxWidth: .infinity)
+                            .background(.ultraThinMaterial)
+                            .environment(\.colorScheme, .dark)
+                            .clipShape(RoundedRectangle(cornerRadius: 24))
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 20)
                     }
-                    .frame(maxWidth: .infinity)
-                    .background(.ultraThinMaterial)
-                    .environment(\.colorScheme, .dark)
-                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                    .padding(20)
-                    .padding(.bottom, 20)
                 }
 
                 if isDeleting {

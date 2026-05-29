@@ -23,21 +23,19 @@ struct CherishedTextsView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color(.systemGroupedBackground)
-                .ignoresSafeArea()
-
+        Group {
             if cherishedTexts.isEmpty && !isImporting {
                 emptyState
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 20) {
+                    LazyVGrid(
+                        columns: [GridItem(.flexible(), spacing: 3), GridItem(.flexible(), spacing: 3)],
+                        spacing: 3
+                    ) {
                         ForEach(filteredCherishedTexts) { cherishedText in
-                            CherishedTextCard(cherishedText: cherishedText)
+                            ScreenshotTile(imageData: cherishedText.imageData)
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
                 }
                 .scrollIndicators(.hidden)
                 .searchable(text: $searchText, prompt: "Search memories...")
@@ -76,7 +74,7 @@ struct CherishedTextsView: View {
         ContentUnavailableView {
             Label("No Cherished Texts", systemImage: "heart.text.square")
         } description: {
-            Text("Share a screenshot from Messages, or tap + to import an older one.")
+            Text("Tap + to import a screenshot.")
         } actions: {
             PhotosPicker(
                 selection: $selectedPhoto,
@@ -151,44 +149,18 @@ struct CherishedTextsView: View {
     }
 }
 
-private struct CherishedTextCard: View {
-    let cherishedText: CherishedText
+private struct ScreenshotTile: View {
+    let imageData: Data
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let uiImage = UIImage(data: cherishedText.imageData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.black.opacity(0.04))
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                if cherishedText.extractedText.isEmpty {
-                    Text("Extracting text…")
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
-                } else {
-                    Text(cherishedText.extractedText)
-                        .font(.system(.body, design: .serif))
-                        .foregroundStyle(.primary)
-                        .lineLimit(5)
-                        .multilineTextAlignment(.leading)
-                }
-
-                Text(cherishedText.dateAdded.formatted(date: .abbreviated, time: .shortened))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(16)
-        }
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: .black.opacity(0.06), radius: 20, x: 0, y: 10)
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(.white.opacity(0.6), lineWidth: 0.5)
+        if let uiImage = UIImage(data: imageData) {
+            Image(uiImage: uiImage)
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity)
+                .aspectRatio(9 / 19.5, contentMode: .fill)
+                .clipped()
+                .contentShape(Rectangle())
         }
     }
 }

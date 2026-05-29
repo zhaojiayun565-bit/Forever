@@ -1,0 +1,345 @@
+import PhotosUI
+import SwiftUI
+
+// MARK: - Container
+
+/// Full-screen shared drawing board styled as an iOS Lock Screen.
+struct LockscreenDrawingBoardView: View {
+    @Environment(AppStateManager.self) private var appState
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var board: DrawingBoardManager?
+    @State private var penColor: Color = .white
+    @State private var wallpaper: UIImage?
+    @State private var photoItem: PhotosPickerItem?
+
+    private let penWidth: Double = 6
+
+    var body: some View {
+        ZStack {
+            BoardBackgroundView(wallpaper: wallpaper)
+
+            if let board {
+                DrawingCanvasView(board: board, penColor: $penColor, penWidth: penWidth)
+
+                VStack(spacing: 8) {
+                    MockStatusBarView()
+                    LockscreenClockView()
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+
+                BoardToastOverlay(board: board)
+            } else {
+                ProgressView()
+                    .tint(.white)
+            }
+
+            CloseButton { dismiss() }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if let board {
+                FloatingDrawingToolbar(
+                    penColor: $penColor,
+                    photoItem: $photoItem,
+                    canUndo: board.canUndo,
+                    onUndo: { Task { await board.undoLast() } },
+                    onClear: { Task { await board.clearAll() } }
+                )
+                .padding(.bottom, 8)
+            }
+        }
+        .statusBarHidden(true)
+        .task {
+            let manager = DrawingBoardManager(
+                coupleId: appState.currentCouple?.id,
+                currentUserId: appState.currentUser?.id ?? UUID(),
+                partnerName: appState.partnerProfile?.displayName ?? String(localized: "Your partner")
+            )
+            board = manager
+            wallpaper = BoardWallpaperStore.load()
+            await manager.start()
+        }
+        .onChange(of: photoItem) { _, newItem in
+            guard let newItem else { return }
+            Task {
+                if let data = try? await newItem.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    wallpaper = image
+                    BoardWallpaperStore.save(data)
+                }
+            }
+        }
+        .onDisappear {
+            if let board { Task { await board.stop() } }
+        }
+    }
+}
+
+// MARK: - Background (local-only wallpaper)
+
+private struct BoardBackgroundView: View {
+    let wallpaper: UIImage?
+
+    var body: some View {
+        Group {
+            if let wallpaper {
+                Image(uiImage: wallpaper)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                LinearGradient(
+                    colors: [Color(red: 0.10, green: 0.10, blue: 0.18), .black],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
+// MARK: - Canvas
+
+/// Isolates the high-frequency drawing state: the in-progress local stroke lives in this
+/// view's `@State`, so dragging never re-renders the clock or toolbar.
+private struct DrawingCanvasView: View {
+    let board: DrawingBoardManager
+    @Binding var penColor: Color
+    let penWidth: Double
+
+    @State private var currentStroke: DrawStroke?
+
+    var body: some View {
+        // Reading these in `body` registers observation so the Canvas redraws on remote updates.
+        let committed = board.committedStrokes
+        let remote = Array(board.remoteActiveStrokes.values)
+        let inProgress = currentStroke
+
+        GeometryReader { geo in
+            let canvasWidth = geo.size.width
+            Canvas { context, size in
+                let scale = size.width
+                for stroke in committed { Self.draw(stroke, in: &context, scale: scale) }
+                for stroke in remote { Self.draw(stroke, in: &context, scale: scale) }
+                if let inProgress { Self.draw(inProgress, in: &context, scale: scale) }
+            }
+            .contentShape(Rectangle())
+            .gesture(drawGesture(canvasWidth: canvasWidth))
+        }
+        .ignoresSafeArea()
+    }
+
+    private func drawGesture(canvasWidth: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                guard canvasWidth > 0 else { return }
+                // Width-normalized so geometry survives differing screen aspect ratios.
+                let point = CGPoint(x: value.location.x / canvasWidth, y: value.location.y / canvasWidth)
+                if currentStroke == nil {
+                    currentStroke = DrawStroke(
+                        id: UUID(),
+                        authorId: board.currentUserId,
+                        colorHex: penColor.toHexString(),
+                        width: penWidth / Double(canvasWidth),
+                        points: [point]
+                    )
+                } else {
+                    currentStroke?.points.append(point)
+                }
+                if let stroke = currentStroke {
+                    board.enqueueLocalPoints(
+                        strokeId: stroke.id,
+                        colorHex: stroke.colorHex,
+                        width: stroke.width,
+                        newPoints: [point]
+                    )
+                }
+            }
+            .onEnded { _ in
+                guard let stroke = currentStroke else { return }
+                currentStroke = nil
+                Task { await board.commitLocalStroke(stroke) }
+            }
+    }
+
+    /// Renders a stroke, scaling normalized coordinates by canvas width (uniform on both axes).
+    private static func draw(_ stroke: DrawStroke, in context: inout GraphicsContext, scale: CGFloat) {
+        let points = stroke.points.map { CGPoint(x: $0.x * scale, y: $0.y * scale) }
+        let lineWidth = max(1, stroke.width * scale)
+        let color = Color(hexString: stroke.colorHex)
+
+        guard points.count > 1 else {
+            // A single tap renders as a dot.
+            if let dot = points.first {
+                let r = lineWidth / 2
+                let rect = CGRect(x: dot.x - r, y: dot.y - r, width: lineWidth, height: lineWidth)
+                context.fill(Path(ellipseIn: rect), with: .color(color))
+            }
+            return
+        }
+
+        var path = Path()
+        path.move(to: points[0])
+        for point in points.dropFirst() { path.addLine(to: point) }
+        context.stroke(
+            path,
+            with: .color(color),
+            style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+        )
+    }
+}
+
+// MARK: - Lock Screen chrome
+
+/// Minimal mocked status bar (the real one is hidden for an authentic full-bleed mock).
+private struct MockStatusBarView: View {
+    var body: some View {
+        HStack {
+            Spacer()
+            HStack(spacing: 6) {
+                Image(systemName: "cellularbars")
+                Image(systemName: "wifi")
+            }
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(.white)
+        }
+        .frame(height: 24)
+    }
+}
+
+/// Centered time + date using native typography. Strictly flat: no shadows, no widgets.
+private struct LockscreenClockView: View {
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            let now = context.date
+            VStack(spacing: 2) {
+                Text(now, format: .dateTime.weekday(.wide).month(.wide).day())
+                    .font(.system(size: 21, weight: .semibold, design: .rounded))
+                Text(now, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute(.twoDigits))
+                    .font(.system(size: 88, weight: .heavy, design: .rounded))
+            }
+            .foregroundStyle(.white)
+            .padding(.top, 12)
+        }
+    }
+}
+
+// MARK: - Floating toolbar
+
+private struct FloatingDrawingToolbar: View {
+    @Binding var penColor: Color
+    @Binding var photoItem: PhotosPickerItem?
+    let canUndo: Bool
+    let onUndo: () -> Void
+    let onClear: () -> Void
+
+    var body: some View {
+        HStack(spacing: 24) {
+            ColorPicker("Pen color", selection: $penColor, supportsOpacity: false)
+                .labelsHidden()
+
+            ToolbarIconButton(systemName: "arrow.uturn.backward", action: onUndo)
+                .disabled(!canUndo)
+                .opacity(canUndo ? 1 : 0.35)
+
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .toolbarIconStyle()
+            }
+
+            ToolbarIconButton(systemName: "trash", role: .destructive, action: onClear)
+        }
+        .padding(.horizontal, 26)
+        .padding(.vertical, 16)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(.white.opacity(0.15), lineWidth: 1))
+        .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
+    }
+}
+
+private struct ToolbarIconButton: View {
+    let systemName: String
+    var role: ButtonRole?
+    let action: () -> Void
+
+    var body: some View {
+        Button(role: role, action: action) {
+            Image(systemName: systemName)
+                .toolbarIconStyle(tint: role == .destructive ? .red : .white)
+        }
+        .buttonStyle(BubblyButtonStyle())
+    }
+}
+
+private extension Image {
+    func toolbarIconStyle(tint: Color = .white) -> some View {
+        self
+            .font(.system(size: 20, weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(width: 30, height: 30)
+    }
+}
+
+// MARK: - Close button
+
+private struct CloseButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        VStack {
+            HStack {
+                Spacer()
+                Button(action: action) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .buttonStyle(BubblyButtonStyle())
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 4)
+    }
+}
+
+// MARK: - In-app toast
+
+/// Separate observer so the toast never re-renders the canvas container.
+private struct BoardToastOverlay: View {
+    let board: DrawingBoardManager
+
+    var body: some View {
+        VStack {
+            if let message = board.toastMessage {
+                Label(message, systemImage: "scribble.variable")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.15), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .padding(.top, 60)
+            }
+            Spacer()
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: board.toastMessage)
+    }
+}
+
+// MARK: - Wallpaper persistence (local-only, not synced)
+
+enum BoardWallpaperStore {
+    private static var url: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("board_wallpaper.jpg")
+    }
+
+    static func save(_ data: Data) { try? data.write(to: url) }
+    static func load() -> UIImage? { UIImage(contentsOfFile: url.path) }
+}

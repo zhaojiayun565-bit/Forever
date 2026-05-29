@@ -6,6 +6,7 @@ enum DB {
     static let couples = "couples"
     static let memories = "memories"
     static let notesBucket = "notes"
+    static let drawingStrokes = "drawing_strokes"
 }
 
 enum PairingError: LocalizedError {
@@ -391,6 +392,50 @@ final class SupabaseManager {
         try await client.from(DB.profiles)
             .update(MsgDTO(latest_message: message))
             .eq("id", value: session.user.id)
+            .execute()
+    }
+
+    // MARK: - Drawing Board
+
+    /// Loads all persisted strokes for a couple's board, oldest first.
+    func fetchStrokes(coupleId: UUID) async throws -> [DrawStroke] {
+        let rows: [DrawingStrokeRow] = try await client.from(DB.drawingStrokes)
+            .select()
+            .eq("couple_id", value: coupleId)
+            .order("created_at", ascending: true)
+            .execute()
+            .value
+        return rows.map { $0.toDrawStroke() }
+    }
+
+    /// Persists a completed stroke (called once per stroke, never per point).
+    func insertStroke(coupleId: UUID, stroke: DrawStroke) async throws {
+        let payload = DrawingStrokeInsert(
+            id: stroke.id,
+            couple_id: coupleId,
+            author_id: stroke.authorId,
+            color_hex: stroke.colorHex,
+            width: stroke.width,
+            points: stroke.points.flattened
+        )
+        try await client.from(DB.drawingStrokes)
+            .insert(payload)
+            .execute()
+    }
+
+    /// Removes a single stroke (powers Undo).
+    func deleteStroke(id: UUID) async throws {
+        try await client.from(DB.drawingStrokes)
+            .delete()
+            .eq("id", value: id)
+            .execute()
+    }
+
+    /// Wipes every stroke on a couple's board (powers Clear).
+    func clearStrokes(coupleId: UUID) async throws {
+        try await client.from(DB.drawingStrokes)
+            .delete()
+            .eq("couple_id", value: coupleId)
             .execute()
     }
 

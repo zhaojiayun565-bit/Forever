@@ -5,6 +5,8 @@ struct HomeDashboardView: View {
     @Environment(AppStateManager.self) private var state
     @AppStorage("distanceUnit") private var distanceUnit = "mi"
     @State private var lockScreenMessage = ""
+    @State private var showingDrawingBoard = false
+    @State private var showingPairingRequiredAlert = false
     
     private var distanceInMiles: Double? {
         guard
@@ -94,6 +96,41 @@ struct HomeDashboardView: View {
                     }
                     .buttonStyle(.plain)
 
+                    Button {
+                        if state.currentCouple == nil {
+                            showingPairingRequiredAlert = true
+                        } else {
+                            showingDrawingBoard = true
+                        }
+                    } label: {
+                        HStack(spacing: 16) {
+                            Image(systemName: "scribble.variable")
+                                .font(.title2)
+                                .foregroundStyle(.purple)
+                                .frame(width: 44, height: 44)
+                                .background(.purple.opacity(0.15), in: Circle())
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Drawing Board")
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                Text("Doodle together on a shared lock screen")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(20)
+                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .shadow(color: .black.opacity(0.04), radius: 12, x: 0, y: 6)
+                    }
+                    .buttonStyle(.plain)
+
                     // 3. THE MAP STATS CARD
                     BubblyCard {
                         VStack(spacing: 8) {
@@ -150,6 +187,15 @@ struct HomeDashboardView: View {
             }
             .background(Color(UIColor.systemGroupedBackground))
             .navigationTitle("Us")
+            .fullScreenCover(isPresented: $showingDrawingBoard) {
+                LockscreenDrawingBoardView()
+                    .environment(state)
+            }
+            .alert("Pairing Required", isPresented: $showingPairingRequiredAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Pair with your partner to unlock the Shared Drawing Board.")
+            }
         }
     }
 }

@@ -1,3 +1,4 @@
+import CoreImage
 import PhotosUI
 import SwiftUI
 
@@ -12,6 +13,8 @@ struct LockscreenDrawingBoardView: View {
     @State private var penColor: Color = .white
     @State private var wallpaper: UIImage?
     @State private var photoItem: PhotosPickerItem?
+    /// Drives the native status bar style and the chrome color scheme.
+    @State private var backgroundIsDark = true
 
     private let penWidth: Double = 6
 
@@ -23,19 +26,17 @@ struct LockscreenDrawingBoardView: View {
                 DrawingCanvasView(board: board, penColor: $penColor, penWidth: penWidth)
 
                 VStack(spacing: 8) {
-                    MockStatusBarView()
                     LockscreenClockView()
                     Spacer()
                 }
                 .padding(.horizontal, 24)
+                .padding(.top, 48)
 
                 BoardToastOverlay(board: board)
             } else {
                 ProgressView()
-                    .tint(.white)
+                    .tint(.primary)
             }
-
-            CloseButton { dismiss() }
         }
         .safeAreaInset(edge: .bottom) {
             if let board {
@@ -43,13 +44,14 @@ struct LockscreenDrawingBoardView: View {
                     penColor: $penColor,
                     photoItem: $photoItem,
                     canUndo: board.canUndo,
+                    onClose: { dismiss() },
                     onUndo: { Task { await board.undoLast() } },
                     onClear: { Task { await board.clearAll() } }
                 )
                 .padding(.bottom, 8)
             }
         }
-        .statusBarHidden(true)
+        .preferredColorScheme(backgroundIsDark ? .dark : .light)
         .task {
             let manager = DrawingBoardManager(
                 coupleId: appState.currentCouple?.id,
@@ -58,6 +60,7 @@ struct LockscreenDrawingBoardView: View {
             )
             board = manager
             wallpaper = BoardWallpaperStore.load()
+            updateBackgroundAppearance()
             await manager.start()
         }
         .onChange(of: photoItem) { _, newItem in
@@ -67,12 +70,18 @@ struct LockscreenDrawingBoardView: View {
                    let image = UIImage(data: data) {
                     wallpaper = image
                     BoardWallpaperStore.save(data)
+                    updateBackgroundAppearance()
                 }
             }
         }
         .onDisappear {
             if let board { Task { await board.stop() } }
         }
+    }
+
+    /// Picks a dark or light scheme from the wallpaper's top strip (default gradient is dark).
+    private func updateBackgroundAppearance() {
+        backgroundIsDark = wallpaper.map { !$0.topRegionIsLight() } ?? true
     }
 }
 
@@ -192,35 +201,18 @@ private struct DrawingCanvasView: View {
 
 // MARK: - Lock Screen chrome
 
-/// Minimal mocked status bar (the real one is hidden for an authentic full-bleed mock).
-private struct MockStatusBarView: View {
-    var body: some View {
-        HStack {
-            Spacer()
-            HStack(spacing: 6) {
-                Image(systemName: "cellularbars")
-                Image(systemName: "wifi")
-            }
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(.white)
-        }
-        .frame(height: 24)
-    }
-}
-
 /// Centered time + date using native typography. Strictly flat: no shadows, no widgets.
 private struct LockscreenClockView: View {
     var body: some View {
         TimelineView(.everyMinute) { context in
             let now = context.date
-            VStack(spacing: 2) {
+            VStack(spacing: 4) {
                 Text(now, format: .dateTime.weekday(.wide).month(.wide).day())
                     .font(.system(size: 21, weight: .semibold, design: .rounded))
                 Text(now, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute(.twoDigits))
                     .font(.system(size: 88, weight: .heavy, design: .rounded))
             }
-            .foregroundStyle(.white)
-            .padding(.top, 12)
+            .foregroundStyle(.primary)
         }
     }
 }
@@ -231,11 +223,14 @@ private struct FloatingDrawingToolbar: View {
     @Binding var penColor: Color
     @Binding var photoItem: PhotosPickerItem?
     let canUndo: Bool
+    let onClose: () -> Void
     let onUndo: () -> Void
     let onClear: () -> Void
 
     var body: some View {
         HStack(spacing: 24) {
+            ToolbarIconButton(systemName: "xmark", action: onClose)
+
             ColorPicker("Pen color", selection: $penColor, supportsOpacity: false)
                 .labelsHidden()
 
@@ -266,43 +261,18 @@ private struct ToolbarIconButton: View {
     var body: some View {
         Button(role: role, action: action) {
             Image(systemName: systemName)
-                .toolbarIconStyle(tint: role == .destructive ? .red : .white)
+                .toolbarIconStyle(tint: role == .destructive ? .red : .primary)
         }
         .buttonStyle(BubblyButtonStyle())
     }
 }
 
 private extension Image {
-    func toolbarIconStyle(tint: Color = .white) -> some View {
+    func toolbarIconStyle(tint: Color = .primary) -> some View {
         self
             .font(.system(size: 20, weight: .semibold))
             .foregroundStyle(tint)
             .frame(width: 30, height: 30)
-    }
-}
-
-// MARK: - Close button
-
-private struct CloseButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        VStack {
-            HStack {
-                Spacer()
-                Button(action: action) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                .buttonStyle(BubblyButtonStyle())
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 4)
     }
 }
 
@@ -317,7 +287,7 @@ private struct BoardToastOverlay: View {
             if let message = board.toastMessage {
                 Label(message, systemImage: "scribble.variable")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 12)
                     .background(.ultraThinMaterial, in: Capsule())
@@ -329,6 +299,29 @@ private struct BoardToastOverlay: View {
             Spacer()
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: board.toastMessage)
+    }
+}
+
+// MARK: - Brightness sampling
+
+private extension UIImage {
+    /// Average brightness of the top strip (where the status bar sits). > 0.6 is "light".
+    func topRegionIsLight(fraction: CGFloat = 0.12) -> Bool {
+        guard let cg = cgImage else { return false }
+        let ci = CIImage(cgImage: cg)
+        let stripHeight = ci.extent.height * fraction
+        // CoreImage origin is bottom-left, so the top strip is at maxY - stripHeight.
+        let rect = CGRect(x: ci.extent.minX, y: ci.extent.maxY - stripHeight,
+                          width: ci.extent.width, height: stripHeight)
+        guard let filter = CIFilter(name: "CIAreaAverage", parameters: [
+            kCIInputImageKey: ci, kCIInputExtentKey: CIVector(cgRect: rect)
+        ]), let output = filter.outputImage else { return false }
+        var px = [UInt8](repeating: 0, count: 4)
+        CIContext().render(output, toBitmap: &px, rowBytes: 4,
+                           bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+                           format: .RGBA8, colorSpace: nil)
+        let luminance = 0.299 * Double(px[0]) + 0.587 * Double(px[1]) + 0.114 * Double(px[2])
+        return luminance / 255 > 0.6
     }
 }
 

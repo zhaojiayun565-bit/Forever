@@ -620,6 +620,5 @@ struct ForeverWidgets: WidgetBundle {
         LockScreenMessageWidget()
         DistanceLockScreenWidget()
         DaysTogetherWidget()
-        CherishedTextWidget()
     }
 }

@@ -5,6 +5,7 @@ import UIKit
 
 struct CherishedTextsView: View {
     @Query(sort: \CherishedText.dateAdded, order: .reverse) private var cherishedTexts: [CherishedText]
+    @Environment(\.modelContext) private var modelContext
 
     @State private var searchText = ""
     @State private var selectedPhoto: PhotosPickerItem?
@@ -15,6 +16,10 @@ struct CherishedTextsView: View {
         return cherishedTexts.filter {
             $0.extractedText.localizedCaseInsensitiveContains(searchText)
         }
+    }
+
+    private var pendingOCRItems: [CherishedText] {
+        cherishedTexts.filter { $0.extractedText.isEmpty }
     }
 
     var body: some View {
@@ -36,6 +41,9 @@ struct CherishedTextsView: View {
                 }
                 .scrollIndicators(.hidden)
                 .searchable(text: $searchText, prompt: "Search memories...")
+                .task {
+                    await processPendingOCR()
+                }
             }
         }
         .navigationTitle("Cherished Texts")
@@ -99,7 +107,28 @@ struct CherishedTextsView: View {
         }
     }
 
-    /// Loads a screenshot, runs OCR, and persists it to the shared App Group store.
+    /// Runs OCR in the main app for items saved without extracted text (e.g. from the Share Extension).
+    @MainActor
+    private func processPendingOCR() async {
+        let pending = pendingOCRItems
+        guard !pending.isEmpty else { return }
+
+        var didUpdate = false
+        for item in pending {
+            do {
+                item.extractedText = try await VisionHelper.extractText(from: item.imageData)
+                didUpdate = true
+            } catch {
+                continue
+            }
+        }
+
+        if didUpdate {
+            try? modelContext.save()
+        }
+    }
+
+    /// Loads a screenshot and persists it; OCR runs lazily via `processPendingOCR()`.
     @MainActor
     private func importScreenshot(from item: PhotosPickerItem) async {
         isImporting = true
@@ -110,19 +139,15 @@ struct CherishedTextsView: View {
 
         guard let imageData = try? await item.loadTransferable(type: ScreenshotImageData.self)?.data else { return }
 
-        do {
-            let extractedText = try await VisionHelper.extractText(from: imageData)
-            let cherishedText = CherishedText(
-                imageData: imageData,
-                extractedText: extractedText
-            )
+        let cherishedText = CherishedText(
+            imageData: imageData,
+            extractedText: ""
+        )
 
-            let context = SharedDatabase.context
-            context.insert(cherishedText)
-            try context.save()
-        } catch {
-            // OCR or persistence failed.
-        }
+        modelContext.insert(cherishedText)
+        try? modelContext.save()
+
+        await processPendingOCR()
     }
 }
 
@@ -141,7 +166,7 @@ private struct CherishedTextCard: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 if cherishedText.extractedText.isEmpty {
-                    Text("No text detected")
+                    Text("Extracting text…")
                         .font(.subheadline)
                         .foregroundStyle(.tertiary)
                 } else {

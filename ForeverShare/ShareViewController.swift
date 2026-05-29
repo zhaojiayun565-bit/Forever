@@ -10,35 +10,30 @@ class ShareViewController: SLComposeServiceViewController {
     }
 
     override func didSelectPost() {
-        // Prevent default dismissal; we complete the request manually after processing.
         guard let extensionContext else { return }
 
         guard let itemProvider = imageItemProvider(from: extensionContext) else {
-            extensionContext.completeRequest(returningItems: nil, completionHandler: nil)
+            extensionContext.completeRequest(returningItems: [], completionHandler: nil)
             return
         }
 
         itemProvider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil) { [weak self] item, error in
+            guard error == nil, let imageData = Self.imageData(from: item) else {
+                self?.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+                return
+            }
+
             Task { @MainActor in
-                defer {
-                    self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
-                }
+                let cherishedText = CherishedText(
+                    imageData: imageData,
+                    extractedText: ""
+                )
 
-                guard error == nil, let imageData = Self.imageData(from: item) else { return }
+                let context = SharedDatabase.shared.mainContext
+                context.insert(cherishedText)
+                try? context.save()
 
-                do {
-                    let extractedText = try await VisionHelper.extractText(from: imageData)
-                    let cherishedText = CherishedText(
-                        imageData: imageData,
-                        extractedText: extractedText
-                    )
-
-                    let context = SharedDatabase.shared.mainContext
-                    context.insert(cherishedText)
-                    try context.save()
-                } catch {
-                    // OCR or persistence failed; defer still dismisses the extension.
-                }
+                self?.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
             }
         }
     }
@@ -70,12 +65,18 @@ class ShareViewController: SLComposeServiceViewController {
             return data
         }
 
-        if let url = item as? URL, let data = try? Data(contentsOf: url) {
-            return data
+        if let url = item as? URL {
+            let hasAccess = url.startAccessingSecurityScopedResource()
+            defer {
+                if hasAccess {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            return try? Data(contentsOf: url)
         }
 
         if let image = item as? UIImage {
-            return image.jpegData(compressionQuality: 0.9) ?? image.pngData()
+            return image.jpegData(compressionQuality: 0.9)
         }
 
         return nil

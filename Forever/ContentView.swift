@@ -1,10 +1,12 @@
 import SwiftUI
+import UserNotifications
 
 struct ContentView: View {
     @Environment(AppStateManager.self) private var state
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("hasSkippedPairing") private var hasSkippedPairing = false
     @Environment(\.scenePhase) var scenePhase
+    @State private var showDrawingBoard = false
 
     var body: some View {
         Group {
@@ -40,11 +42,31 @@ struct ContentView: View {
         }
         .task {
             await state.initializeApp()
+            await registerForPushIfAuthorized()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active && state.currentCouple != nil {
                 Task { await state.syncAndRefreshWidgets() }
             }
         }
+        .fullScreenCover(isPresented: $showDrawingBoard) {
+            LockscreenDrawingBoardView()
+                .environment(state)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openDrawingBoard)) { _ in
+            if state.currentCouple != nil { showDrawingBoard = true }
+        }
+        .onOpenURL { url in
+            if url.host == "drawingboard", state.currentCouple != nil {
+                showDrawingBoard = true
+            }
+        }
+    }
+
+    /// Re-registers for remote notifications on launch when the user already granted permission.
+    private func registerForPushIfAuthorized() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        guard settings.authorizationStatus == .authorized else { return }
+        UIApplication.shared.registerForRemoteNotifications()
     }
 }

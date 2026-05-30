@@ -36,6 +36,9 @@ final class DrawingBoardManager {
     private var pendingWidth: Double = 0
     private var pendingPoints: [CGPoint] = []
 
+    /// Ensures the "started drawing" push fires at most once per board session.
+    private var didSignalStart = false
+
     /// ~70ms throttle caps broadcasts at roughly 14/sec regardless of gesture frequency.
     private let flushInterval: Duration = .milliseconds(70)
 
@@ -98,6 +101,7 @@ final class DrawingBoardManager {
         flushTask?.cancel()
         listenTask?.cancel()
         toastTask?.cancel()
+        didSignalStart = false
         if let channel {
             await supabase.client.realtimeV2.removeChannel(channel)
         }
@@ -123,9 +127,17 @@ final class DrawingBoardManager {
             pendingColorHex = colorHex
             pendingWidth = width
             pendingPoints = []
+            signalStartIfNeeded()
         }
         pendingPoints.append(contentsOf: newPoints)
         scheduleFlush()
+    }
+
+    /// Notifies the partner (once per session) that this user has begun drawing.
+    private func signalStartIfNeeded() {
+        guard !didSignalStart else { return }
+        didSignalStart = true
+        Task { try? await supabase.markDrawingStarted() }
     }
 
     /// Finalizes a local stroke: flushes the last chunk, commits locally, and persists once.
@@ -211,9 +223,32 @@ final class DrawingBoardManager {
         }
     }
 
+    /// Rasterizes the current board and pushes it to the partner's note widget.
+    /// Reuses the note pipeline: upload PNG -> set `latest_note_url` -> webhook push + widget reload.
+    func sendToWidget() async {
+        let strokes = committedStrokes + Array(remoteActiveStrokes.values)
+        guard let data = BoardSnapshotRenderer.png(strokes: strokes) else {
+            showToast(String(localized: "Draw something first"))
+            return
+        }
+        do {
+            let url = try await supabase.uploadNoteImage(data: data)
+            try await supabase.updateLatestNoteUrl(url: url)
+            showToast(String(localized: "Sent to \(partnerName)'s widget"))
+        } catch {
+            print("🚨 Failed to send drawing to widget: \(error)")
+            showToast(String(localized: "Couldn't send. Try again."))
+        }
+    }
+
     /// True when the current user has at least one stroke to undo.
     var canUndo: Bool {
         committedStrokes.contains { $0.authorId == currentUserId }
+    }
+
+    /// True when there is anything on the board to send.
+    var canSend: Bool {
+        !committedStrokes.isEmpty || !remoteActiveStrokes.isEmpty
     }
 
     // MARK: - Incoming broadcast handlers
@@ -275,7 +310,12 @@ final class DrawingBoardManager {
     }
 
     private func triggerToast() {
-        toastMessage = String(localized: "\(partnerName) added to your board")
+        showToast(String(localized: "\(partnerName) added to your board"))
+    }
+
+    /// Shows a transient banner and auto-dismisses it after a short delay.
+    private func showToast(_ message: String) {
+        toastMessage = message
         toastTask?.cancel()
         toastTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(2.5))

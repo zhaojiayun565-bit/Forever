@@ -2,6 +2,17 @@ import UIKit
 import UserNotifications
 import WidgetKit
 
+extension Notification.Name {
+    /// Posted when a push or widget tap should route the user into the shared drawing board.
+    static let openDrawingBoard = Notification.Name("openDrawingBoard")
+}
+
+/// Shared keys for the App Group used by the widget and push pipeline.
+enum AppGroup {
+    static let suiteName = "group.com.jiayunzhao.Forever"
+    static let pendingDeviceTokenKey = "pendingDeviceToken"
+}
+
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Set the delegate so foreground notifications show up, but DO NOT request authorization here!
@@ -11,10 +22,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        let tokenParts = deviceToken.map { data in String(format: "%02.2hhx", data) }
-        let token = tokenParts.joined()
+        let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
         print("✅ APNs Device Token: \(token)")
-        // This token will be saved to Supabase later
+        // Cache so a later sign-in can attach the token to the authenticated user.
+        UserDefaults(suiteName: AppGroup.suiteName)?.set(token, forKey: AppGroup.pendingDeviceTokenKey)
+        Task { try? await SupabaseManager.shared.updateDeviceToken(token) }
     }
     
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
@@ -32,5 +44,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     // Allow notifications to show as banners even when the app is open
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .sound, .badge])
+    }
+
+    /// Routes a tapped notification into the drawing board when the payload requests it.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        let userInfo = response.notification.request.content.userInfo
+        if userInfo["route"] as? String == "drawingboard" {
+            Task { @MainActor in
+                NotificationCenter.default.post(name: .openDrawingBoard, object: nil)
+            }
+        }
+        completionHandler()
     }
 }

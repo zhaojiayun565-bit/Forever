@@ -124,24 +124,19 @@ final class SupabaseManager: Sendable {
             .execute()
     }
 
-    /// Returns a couple row the user belongs to, if any.
+    /// Returns the canonical couple the user belongs to, if any. Both partners resolve the
+    /// same earliest row so they share one Realtime topic and one persisted stroke history.
     func fetchCurrentCouple() async throws -> Couple? {
         let session = try await client.auth.session
         let uid = session.user.id
-        let asUser1: [Couple] = try await client.from(DB.couples)
+        let rows: [Couple] = try await client.from(DB.couples)
             .select()
-            .eq("user1_id", value: uid)
+            .or("user1_id.eq.\(uid),user2_id.eq.\(uid)")
+            .order("created_at", ascending: true)
             .limit(1)
             .execute()
             .value
-        if let first = asUser1.first { return first }
-        let asUser2: [Couple] = try await client.from(DB.couples)
-            .select()
-            .eq("user2_id", value: uid)
-            .limit(1)
-            .execute()
-            .value
-        return asUser2.first
+        return rows.first
     }
 
     func fetchMemories(coupleId: UUID?, creatorId: UUID) async throws -> [CoupleMemory] {
@@ -304,7 +299,8 @@ final class SupabaseManager: Sendable {
         try await client.rpc("unpair_couple").execute()
     }
 
-    /// Resolves a partner by pairing code and creates a `couples` row.
+    /// Resolves a partner by pairing code and returns the couple, reusing the existing
+    /// row if the pair is already linked so both partners converge on one canonical couple.
     func linkPartner(code: String) async throws -> Couple {
         let session = try await client.auth.session
         let selfId = session.user.id
@@ -320,13 +316,37 @@ final class SupabaseManager: Sendable {
 
         guard let partnerId else { throw PairingError.partnerNotFound }
 
-        let inserted: Couple = try await client.from(DB.couples)
-            .insert(NewCoupleInsert(user1_id: selfId, user2_id: partnerId))
+        if let existing = try await fetchCouple(between: selfId, and: partnerId) {
+            return existing
+        }
+
+        do {
+            return try await client.from(DB.couples)
+                .insert(NewCoupleInsert(user1_id: selfId, user2_id: partnerId))
+                .select()
+                .single()
+                .execute()
+                .value
+        } catch {
+            // A simultaneous link from the partner can win the `couples_unique_pair`
+            // race; fall back to the now-existing canonical row.
+            if let existing = try await fetchCouple(between: selfId, and: partnerId) {
+                return existing
+            }
+            throw error
+        }
+    }
+
+    /// Returns the canonical (earliest) couple linking two users in either direction, if any.
+    private func fetchCouple(between userA: UUID, and userB: UUID) async throws -> Couple? {
+        let rows: [Couple] = try await client.from(DB.couples)
             .select()
-            .single()
+            .or("and(user1_id.eq.\(userA),user2_id.eq.\(userB)),and(user1_id.eq.\(userB),user2_id.eq.\(userA))")
+            .order("created_at", ascending: true)
+            .limit(1)
             .execute()
             .value
-        return inserted
+        return rows.first
     }
 
     /// Writes latest location and battery snapshot for the signed-in user.
@@ -382,6 +402,19 @@ final class SupabaseManager: Sendable {
         }
         try await client.from(DB.profiles)
             .update(UpdateDTO(display_name: name, anniversary_date: anniversary))
+            .eq("id", value: session.user.id)
+            .execute()
+    }
+
+    /// Stamps `drawing_started_at` so the profiles webhook pushes a "started drawing" alert to the partner.
+    func markDrawingStarted() async throws {
+        let session = try await client.auth.session
+        struct StartedDTO: Encodable, Sendable {
+            let drawing_started_at: String
+        }
+        let now = ISO8601DateFormatter().string(from: Date())
+        try await client.from(DB.profiles)
+            .update(StartedDTO(drawing_started_at: now))
             .eq("id", value: session.user.id)
             .execute()
     }

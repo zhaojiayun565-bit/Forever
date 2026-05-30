@@ -47,6 +47,7 @@ final class AppStateManager {
                 currentUser = profile
                 currentCouple = try await supabase.fetchCurrentCouple()
                 await loadPartnerProfile()
+                await flushPendingDeviceToken()
                 if currentCouple == nil {
                     subscribeToCoupleLink()
                 }
@@ -288,6 +289,14 @@ final class AppStateManager {
                 return
             }
         }
+    }
+
+    /// Attaches a device token cached before sign-in to the now-authenticated user.
+    private func flushPendingDeviceToken() async {
+        guard let defaults = UserDefaults(suiteName: AppGroup.suiteName),
+              let token = defaults.string(forKey: AppGroup.pendingDeviceTokenKey)
+        else { return }
+        try? await supabase.updateDeviceToken(token)
     }
 
     private static func randomSixDigitCode() -> String {

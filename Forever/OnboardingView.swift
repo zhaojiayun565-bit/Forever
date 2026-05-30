@@ -212,8 +212,11 @@ struct FeatureCarouselView: View {
                     description: "Draw notes that instantly appear on your partner's home screen.",
                     buttonTitle: "Enable Notifications",
                     buttonAction: {
-                        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
-                            DispatchQueue.main.async { action() }
+                        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                            DispatchQueue.main.async {
+                                if granted { UIApplication.shared.registerForRemoteNotifications() }
+                                action()
+                            }
                         }
                     }
                 ).tag(2)

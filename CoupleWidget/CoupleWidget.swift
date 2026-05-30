@@ -345,6 +345,8 @@ struct DrawingWidgetView: View {
                 .foregroundColor(.white.opacity(0.5))
             }
         }
+        // Tapping the note widget opens the shared drawing board.
+        .widgetURL(URL(string: "forever://drawingboard"))
         // For iOS 17 container backgrounds
         .containerBackground(for: .widget) { Color.black }
     }

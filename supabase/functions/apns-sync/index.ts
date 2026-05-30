@@ -9,11 +9,25 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey)
 serve(async (req) => {
   try {
     const payload = await req.json()
-    const record = payload.record 
+    const record = payload.record
+    const oldRecord = payload.old_record ?? {}
     console.log("🔔 Webhook triggered for profile:", record.id)
 
-    if (!record.latest_note_url && !record.latest_message) {
-        return new Response("No syncable data updated, ignoring.", { status: 200 })
+    // Only act on the specific field that actually changed, so frequent profile updates
+    // (location/battery syncs) don't re-fire stale pushes.
+    const senderName = (record.display_name || "Your partner").trim()
+    let event: { type: string; title: string; body: string } | null = null
+
+    if (record.latest_note_url && record.latest_note_url !== oldRecord.latest_note_url) {
+      event = { type: "note", title: "New Drawing 🎨", body: `${senderName} sent you a drawing!` }
+    } else if (record.latest_message && record.latest_message !== oldRecord.latest_message) {
+      event = { type: "message", title: senderName, body: record.latest_message }
+    } else if (record.drawing_started_at && record.drawing_started_at !== oldRecord.drawing_started_at) {
+      event = { type: "drawing_started", title: `${senderName} is drawing ✏️`, body: "Tap to join them on the board" }
+    }
+
+    if (!event) {
+      return new Response("No syncable change, ignoring.", { status: 200 })
     }
 
     const { data: couple, error: coupleError } = await supabase
@@ -78,12 +92,14 @@ serve(async (req) => {
       body: JSON.stringify({
         aps: {
           "alert": {
-            "title": "New Drawing 🎨",
-            "body": record.latest_message ? record.latest_message : "Your partner sent you a new drawing!"
+            "title": event.title,
+            "body": event.body
           },
           "sound": "default",
           "content-available": 1
         },
+        type: event.type,
+        route: "drawingboard",
         note_url: record.latest_note_url,
         latest_message: record.latest_message
       })

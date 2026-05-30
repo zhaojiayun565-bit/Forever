@@ -44,9 +44,11 @@ struct LockscreenDrawingBoardView: View {
                     penColor: $penColor,
                     photoItem: $photoItem,
                     canUndo: board.canUndo,
+                    canSend: board.canSend,
                     onClose: { dismiss() },
                     onUndo: { Task { await board.undoLast() } },
-                    onClear: { Task { await board.clearAll() } }
+                    onClear: { Task { await board.clearAll() } },
+                    onSend: { Task { await board.sendToWidget() } }
                 )
                 .padding(.bottom, 8)
             }
@@ -223,9 +225,11 @@ private struct FloatingDrawingToolbar: View {
     @Binding var penColor: Color
     @Binding var photoItem: PhotosPickerItem?
     let canUndo: Bool
+    let canSend: Bool
     let onClose: () -> Void
     let onUndo: () -> Void
     let onClear: () -> Void
+    let onSend: () -> Void
 
     var body: some View {
         HStack(spacing: 24) {
@@ -244,12 +248,34 @@ private struct FloatingDrawingToolbar: View {
             }
 
             ToolbarIconButton(systemName: "trash", role: .destructive, action: onClear)
+
+            SendToWidgetButton(isEnabled: canSend, action: onSend)
         }
         .padding(.horizontal, 26)
         .padding(.vertical, 16)
         .background(.ultraThinMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(.white.opacity(0.15), lineWidth: 1))
         .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
+    }
+}
+
+/// Sends the board to the partner's widget. Mirrors the lock-screen message send icon:
+/// a white paperplane in a filled pink circle, dimmed gray when there's nothing to send.
+private struct SendToWidgetButton: View {
+    let isEnabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "paperplane.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 30)
+                .background(isEnabled ? Color.pink : Color.gray.opacity(0.4), in: Circle())
+        }
+        .buttonStyle(BubblyButtonStyle())
+        .disabled(!isEnabled)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isEnabled)
     }
 }
 

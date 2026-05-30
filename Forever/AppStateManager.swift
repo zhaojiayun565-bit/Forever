@@ -24,6 +24,7 @@ final class AppStateManager {
     var newlyAddedLocation: NewlyAddedMemoryCoordinate?
     var isLoading = true
     private var pairingListenerTask: Task<Void, Never>?
+    private var partnerLocationListenerTask: Task<Void, Never>?
 
     init(supabase: SupabaseManager = .shared) {
         self.supabase = supabase
@@ -46,11 +47,17 @@ final class AppStateManager {
 
                 currentUser = profile
                 currentCouple = try await supabase.fetchCurrentCouple()
-                await loadPartnerProfile()
-                await flushPendingDeviceToken()
-                if currentCouple == nil {
+                if currentCouple != nil {
+                    // Paired: upload our location now (a cold launch never triggers the
+                    // scenePhase `.active` handler), then refresh partner + widgets and
+                    // start listening for the partner's live location changes.
+                    await syncAndRefreshWidgets()
+                    subscribeToPartnerLocation()
+                } else {
+                    await loadPartnerProfile()
                     subscribeToCoupleLink()
                 }
+                await flushPendingDeviceToken()
                 print("✅ SUCCESS: Profile loaded.")
             } else {
                 // Not logged in. Clear state so LoginView shows.
@@ -217,6 +224,7 @@ final class AppStateManager {
         try await supabase.attachSoloMemoriesToCouple(coupleId: newlyFetchedCouple.id, creatorId: user.id)
         await loadPartnerProfile()
         await loadMemories()
+        subscribeToPartnerLocation()
         WidgetCenter.shared.reloadAllTimelines()
     }
 
@@ -232,6 +240,8 @@ final class AppStateManager {
             try await supabase.unpairCouple()
 
             // Reset local state so routing returns to pairing flow.
+            partnerLocationListenerTask?.cancel()
+            partnerLocationListenerTask = nil
             currentCouple = nil
             partnerProfile = nil
             memories.removeAll()
@@ -285,8 +295,40 @@ final class AppStateManager {
                     currentCouple = couple
                     await loadPartnerProfile()
                     await loadMemories()
+                    subscribeToPartnerLocation()
                 }
                 return
+            }
+        }
+    }
+
+    /// Subscribes to Realtime UPDATE events on the partner's `profiles` row so distance
+    /// and widgets refresh the moment the partner uploads a new location.
+    private func subscribeToPartnerLocation() {
+        guard let couple = currentCouple, let myId = currentUser?.id else { return }
+        let partnerId = couple.user1Id == myId ? couple.user2Id : couple.user1Id
+
+        partnerLocationListenerTask?.cancel()
+        partnerLocationListenerTask = Task {
+            let channel = supabase.client.realtimeV2
+                .channel("partner-location-\(partnerId)")
+            let updates = channel.postgresChange(
+                UpdateAction.self,
+                schema: "public",
+                table: "profiles",
+                filter: "id=eq.\(partnerId)"
+            )
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                print("🚨 Partner-location subscribe failed: \(error)")
+                return
+            }
+            defer { Task { await self.supabase.client.realtimeV2.removeChannel(channel) } }
+
+            for await _ in updates {
+                guard !Task.isCancelled else { return }
+                await loadPartnerProfile()
             }
         }
     }

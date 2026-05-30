@@ -1,5 +1,7 @@
 import SwiftUI
 import WidgetKit
+import PhotosUI
+import UIKit
 
 private enum DistanceUnitOption: String, CaseIterable {
     case miles = "mi"
@@ -26,6 +28,12 @@ struct SettingsView: View {
     @State private var partnerCode = ""
     @State private var isLinking = false
     @State private var pairingError: String?
+    @State private var showPhotoOptions = false
+    @State private var showCamera = false
+    @State private var showPhotoLibrary = false
+    @State private var pendingAvatarImage: UIImage?
+    @State private var isUploadingAvatar = false
+    @State private var avatarError: String?
 
     private var normalizedDistanceUnit: String {
         DistanceUnitOption(rawValue: distanceUnit)?.rawValue ?? DistanceUnitOption.miles.rawValue
@@ -43,6 +51,42 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    HStack {
+                        Spacer()
+                        Button {
+                            showPhotoOptions = true
+                        } label: {
+                            ZStack {
+                                AvatarView(
+                                    url: state.currentUser?.avatarUrl.flatMap { URL(string: $0) },
+                                    name: displayName.isEmpty ? (state.currentUser?.displayName ?? "Me") : displayName,
+                                    localImage: pendingAvatarImage,
+                                    size: 96
+                                )
+                                if isUploadingAvatar {
+                                    Circle()
+                                        .fill(.black.opacity(0.35))
+                                        .frame(width: 96, height: 96)
+                                    ProgressView()
+                                        .tint(.white)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        Spacer()
+                    }
+                    .listRowBackground(Color.clear)
+
+                    if let avatarError {
+                        Text(avatarError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .listRowBackground(Color.clear)
+                    }
+                }
+
                 Section("Couple Details") {
                     TextField("Your Display Name", text: $displayName)
                     DatePicker("Anniversary", selection: $anniversary, displayedComponents: .date)
@@ -191,6 +235,35 @@ struct SettingsView: View {
                 }
                 syncDistanceUnitToWidgetDefaults()
             }
+            .confirmationDialog("Profile Photo", isPresented: $showPhotoOptions, titleVisibility: .visible) {
+                Button("Take Photo") { showCamera = true }
+                Button("Choose from Library") { showPhotoLibrary = true }
+                Button("Cancel", role: .cancel) {}
+            }
+            .sheet(isPresented: $showCamera) {
+                CameraImagePicker(source: .camera) { image in
+                    Task { await uploadAvatar(image) }
+                }
+            }
+            .sheet(isPresented: $showPhotoLibrary) {
+                CameraImagePicker(source: .photoLibrary) { image in
+                    Task { await uploadAvatar(image) }
+                }
+            }
+        }
+    }
+
+    /// Uploads the picked photo and refreshes widget avatars.
+    private func uploadAvatar(_ image: UIImage) async {
+        pendingAvatarImage = image
+        isUploadingAvatar = true
+        avatarError = nil
+        defer { isUploadingAvatar = false }
+        do {
+            try await state.uploadProfileAvatar(image)
+            pendingAvatarImage = nil
+        } catch {
+            avatarError = error.localizedDescription
         }
     }
 }

@@ -12,7 +12,10 @@ struct Provider: TimelineProvider {
             distanceUnit: "mi",
             myName: "Me",
             partnerName: "Partner",
-            partnerMessage: "Love you always",
+            myMessage: "I miss you",
+            partnerMessage: "Thinking of you",
+            myAvatarImage: nil,
+            partnerAvatarImage: nil,
             anniversaryDate: Date(),
             myCoordinate: nil,
             partnerCoordinate: nil,
@@ -36,7 +39,10 @@ struct Provider: TimelineProvider {
                 distanceUnit: "mi",
                 myName: "Me",
                 partnerName: "Partner",
-                partnerMessage: "Love you always",
+                myMessage: "I miss you",
+                partnerMessage: "Thinking of you",
+                myAvatarImage: nil,
+                partnerAvatarImage: nil,
                 anniversaryDate: Date(),
                 myCoordinate: myCoord,
                 partnerCoordinate: partnerCoord,
@@ -52,6 +58,7 @@ struct Provider: TimelineProvider {
             let distanceUnit = defaults?.string(forKey: "distanceUnit") ?? "mi"
             let myName = defaults?.string(forKey: "myName") ?? "Me"
             let partnerName = defaults?.string(forKey: "partnerName") ?? "P"
+            let myMessage = defaults?.string(forKey: "myMessage")
             let partnerMessage = defaults?.string(forKey: "partnerMessage")
             let anniversaryTimestamp = defaults?.object(forKey: "anniversaryDate") as? Double
             let anniversaryDate = anniversaryTimestamp.map { Date(timeIntervalSince1970: $0) }
@@ -88,6 +95,17 @@ struct Provider: TimelineProvider {
                 )
             }
 
+            async let myAvatar = Self.loadAvatarImage(
+                defaults: defaults,
+                fileName: "my-avatar.jpg",
+                urlKey: "myAvatarUrl"
+            )
+            async let partnerAvatar = Self.loadAvatarImage(
+                defaults: defaults,
+                fileName: "partner-avatar.jpg",
+                urlKey: "partnerAvatarUrl"
+            )
+
             let entry = SimpleEntry(
                 date: Date(),
                 distance: distance,
@@ -95,7 +113,10 @@ struct Provider: TimelineProvider {
                 distanceUnit: distanceUnit,
                 myName: myName,
                 partnerName: partnerName,
+                myMessage: myMessage,
                 partnerMessage: partnerMessage,
+                myAvatarImage: await myAvatar,
+                partnerAvatarImage: await partnerAvatar,
                 anniversaryDate: anniversaryDate,
                 myCoordinate: myCoordinate,
                 partnerCoordinate: partnerCoordinate,
@@ -169,8 +190,7 @@ struct Provider: TimelineProvider {
         return nil
     }
 
-    /// Renders a static map image with a dashed polyline and avatar circles using MKMapSnapshotter.
-    /// This is the widget-safe alternative to SwiftUI's Map view.
+    /// Renders a static edge-to-edge map image using MKMapSnapshotter (widget-safe).
     static func makeMapSnapshot(
         myCoord: CLLocationCoordinate2D,
         partnerCoord: CLLocationCoordinate2D,
@@ -207,65 +227,30 @@ struct Provider: TimelineProvider {
             }
         }
 
-        let p1 = snapshot.point(for: myCoord)
-        let p2 = snapshot.point(for: partnerCoord)
-        let avatar = makeAvatarImage(size: 36)
-
-        let renderer = UIGraphicsImageRenderer(size: size, format: {
-            let fmt = UIGraphicsImageRendererFormat()
-            fmt.scale = UIScreen.main.scale
-            return fmt
-        }())
-
-        return renderer.image { _ in
-            snapshot.image.draw(at: .zero)
-
-            // Dashed pink polyline
-            let linePath = UIBezierPath()
-            linePath.move(to: p1)
-            linePath.addLine(to: p2)
-            linePath.lineWidth = 3
-            let dashPattern: [CGFloat] = [8, 6]
-            linePath.setLineDash(dashPattern, count: dashPattern.count, phase: 0)
-            UIColor.systemPink.setStroke()
-            linePath.stroke()
-
-            // Avatar at each endpoint
-            let avatarSize: CGFloat = 36
-            let offset = avatarSize / 2
-            avatar.draw(in: CGRect(x: p1.x - offset, y: p1.y - offset, width: avatarSize, height: avatarSize))
-            avatar.draw(in: CGRect(x: p2.x - offset, y: p2.y - offset, width: avatarSize, height: avatarSize))
-        }
+        return snapshot.image
     }
 
-    /// Renders a circular avatar image using Core Graphics + SF Symbol.
-    private static func makeAvatarImage(size: CGFloat) -> UIImage {
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
-        return renderer.image { _ in
-            let rect = CGRect(origin: .zero, size: CGSize(width: size, height: size))
-
-            // White border ring
-            UIColor.systemBackground.setFill()
-            UIBezierPath(ovalIn: rect).fill()
-
-            // Gray fill
-            UIColor.systemGray3.setFill()
-            UIBezierPath(ovalIn: rect.insetBy(dx: 2, dy: 2)).fill()
-
-            // Person icon centered inside the circle
-            let iconPointSize = size * 0.52
-            let config = UIImage.SymbolConfiguration(pointSize: iconPointSize, weight: .regular)
-            if let icon = UIImage(systemName: "person.fill", withConfiguration: config)?
-                .withTintColor(.white, renderingMode: .alwaysOriginal) {
-                let iconRect = CGRect(
-                    x: (size - icon.size.width) / 2,
-                    y: (size - icon.size.height) / 2 + size * 0.04,
-                    width: icon.size.width,
-                    height: icon.size.height
-                )
-                icon.draw(in: iconRect)
+    /// Loads an avatar from the App Group cache, falling back to a remote URL.
+    private static func loadAvatarImage(
+        defaults: UserDefaults?,
+        fileName: String,
+        urlKey: String
+    ) async -> UIImage? {
+        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.jiayunzhao.Forever") {
+            let fileURL = container.appendingPathComponent(fileName)
+            if let data = try? Data(contentsOf: fileURL), let image = UIImage(data: data) {
+                return image
             }
         }
+
+        if let urlString = defaults?.string(forKey: urlKey),
+           let url = URL(string: urlString),
+           let (data, _) = try? await URLSession.shared.data(from: url),
+           let image = UIImage(data: data) {
+            return image
+        }
+
+        return nil
     }
 }
 
@@ -276,7 +261,10 @@ struct SimpleEntry: TimelineEntry {
     let distanceUnit: String
     let myName: String
     let partnerName: String
+    let myMessage: String?
     let partnerMessage: String?
+    let myAvatarImage: UIImage?
+    let partnerAvatarImage: UIImage?
     let anniversaryDate: Date?
     let myCoordinate: CLLocationCoordinate2D?
     let partnerCoordinate: CLLocationCoordinate2D?
@@ -284,40 +272,184 @@ struct SimpleEntry: TimelineEntry {
     let mapSnapshot: UIImage?
 }
 
-// MARK: - Widget 1: Distance Map View
-struct DistanceWidgetView: View {
-    var entry: Provider.Entry
+// MARK: - Distance Widget Components
+
+/// Native contact-style monogram circle (Find My look) with optional profile photo.
+struct MonogramAvatar: View {
+    let name: String
+    var image: UIImage?
+    var size: CGFloat = 44
+
+    private var initial: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = trimmed.first else { return "?" }
+        return String(first).uppercased()
+    }
 
     var body: some View {
-        ZStack {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    Circle()
+                        .fill(Color(.systemGray3))
+                    Text(initial)
+                        .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .shadow(color: .black.opacity(0.25), radius: 4, x: 0, y: 2)
+    }
+}
+
+/// White capsule message bubble shown above each monogram on the medium widget.
+struct MessageBubble: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.black)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.white)
+            .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.12), radius: 4, x: 0, y: 2)
+    }
+}
+
+// MARK: - Widget 1: Distance Map View
+struct DistanceWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    var entry: Provider.Entry
+
+    private var isKilometers: Bool { entry.distanceUnit == "km" }
+    private var convertedDistance: Double {
+        isKilometers ? entry.distance * 1.609344 : entry.distance
+    }
+    private var distanceUnitLabel: String { isKilometers ? "km" : "mi" }
+
+    private var distanceText: String {
+        guard entry.distance > 0 else { return "-- \(distanceUnitLabel)" }
+        return "\(Int(convertedDistance)) \(distanceUnitLabel)"
+    }
+
+    private var cleanedMyMessage: String? {
+        let value = entry.myMessage?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (value?.isEmpty == false) ? value : nil
+    }
+
+    private var cleanedPartnerMessage: String? {
+        let value = entry.partnerMessage?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (value?.isEmpty == false) ? value : nil
+    }
+
+    var body: some View {
+        Group {
+            if entry.mapSnapshot != nil {
+                switch family {
+                case .systemMedium:
+                    mediumLayout
+                default:
+                    smallLayout
+                }
+            } else {
+                emptyState
+            }
+        }
+        .containerBackground(for: .widget) {
             if let snapshot = entry.mapSnapshot {
                 Image(uiImage: snapshot)
                     .resizable()
                     .scaledToFill()
-
-                // Distance capsule centered on the widget (map is centered on the midpoint)
-                Text("\(Int(entry.distance)) \(entry.distanceUnit)")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(.thickMaterial)
-                    .clipShape(Capsule())
-                    .shadow(color: .black.opacity(0.15), radius: 5, x: 0, y: 2)
             } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "location.slash.fill")
-                        .font(.title2)
-                        .foregroundColor(.gray)
-                    Text("Waiting for location...")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                Color(.systemBackground)
             }
         }
-        .containerBackground(for: .widget) {
-            Color(UIColor.systemBackground)
+    }
+
+    private var distancePill: some View {
+        Text(distanceText)
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(.black)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(Color.white)
+            .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.12), radius: 4, x: 0, y: 2)
+    }
+
+    private var smallLayout: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 20) {
+                MonogramAvatar(name: entry.myName, image: entry.myAvatarImage, size: 44)
+                MonogramAvatar(name: entry.partnerName, image: entry.partnerAvatarImage, size: 44)
+            }
+            distancePill
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var mediumLayout: some View {
+        GeometryReader { geo in
+            let anchorY = geo.size.height * 0.62
+            let leftX: CGFloat = 52
+            let rightX = geo.size.width - 52
+
+            ZStack {
+                Path { path in
+                    path.move(to: CGPoint(x: leftX, y: anchorY))
+                    path.addQuadCurve(
+                        to: CGPoint(x: rightX, y: anchorY),
+                        control: CGPoint(x: geo.size.width / 2, y: anchorY - 22)
+                    )
+                }
+                .stroke(
+                    Color.white.opacity(0.9),
+                    style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [6, 5])
+                )
+
+                distancePill
+                    .position(x: geo.size.width / 2, y: anchorY)
+
+                VStack(spacing: 6) {
+                    if let message = cleanedMyMessage {
+                        MessageBubble(text: message)
+                    }
+                    MonogramAvatar(name: entry.myName, image: entry.myAvatarImage, size: 50)
+                }
+                .position(x: leftX, y: anchorY - (cleanedMyMessage == nil ? 0 : 18))
+
+                VStack(spacing: 6) {
+                    if let message = cleanedPartnerMessage {
+                        MessageBubble(text: message)
+                    }
+                    MonogramAvatar(name: entry.partnerName, image: entry.partnerAvatarImage, size: 50)
+                }
+                .position(x: rightX, y: anchorY - (cleanedPartnerMessage == nil ? 0 : 18))
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "location.slash.fill")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text("Location permission is required for the widget to work!")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 12)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -559,8 +691,8 @@ struct StatusWidget: Widget {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
             DistanceWidgetView(entry: entry)
         }
-        .configurationDisplayName("Distance Map")
-        .description("See your distance with a live connection map.")
+        .configurationDisplayName("Distance")
+        .description("Location permission is required for the widget to work!")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

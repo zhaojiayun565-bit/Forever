@@ -15,6 +15,7 @@ struct LockscreenDrawingBoardView: View {
     @State private var photoItem: PhotosPickerItem?
     /// Drives the native status bar style and the chrome color scheme.
     @State private var backgroundIsDark = true
+    @State private var boardSize: CGSize = .zero
 
     private let penWidth: Double = 6
 
@@ -38,6 +39,12 @@ struct LockscreenDrawingBoardView: View {
                     .tint(.primary)
             }
         }
+        .background {
+            GeometryReader { geo in
+                Color.clear.onAppear { boardSize = geo.size }
+                    .onChange(of: geo.size) { _, newSize in boardSize = newSize }
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             if let board {
                 FloatingDrawingToolbar(
@@ -48,7 +55,7 @@ struct LockscreenDrawingBoardView: View {
                     onClose: { dismiss() },
                     onUndo: { Task { await board.undoLast() } },
                     onClear: { Task { await board.clearAll() } },
-                    onSend: { Task { await board.sendToWidget() } }
+                    onSend: { Task { await board.sendToWidget(boardSize: boardSize, wallpaper: wallpaper) } }
                 )
                 .padding(.bottom, 8)
             }

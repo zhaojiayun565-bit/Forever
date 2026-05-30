@@ -1,6 +1,7 @@
 import CoreLocation
 import Foundation
 import Observation
+import UIKit
 import WidgetKit
 import Supabase
 
@@ -105,6 +106,7 @@ final class AppStateManager {
 
             self.partnerProfile = partner
             self.updateWidgetData(partner: partner)
+            await syncAvatarImagesToAppGroup()
         } catch {
             print("🚨 Failed to fetch partner profile: \(error)")
         }
@@ -189,13 +191,26 @@ final class AppStateManager {
             didChange = true
         }
 
-        // 5. Lock screen message
+        // 5. Lock screen messages
         if let msg = partner.latestMessage {
             let key = "partnerMessage"
             if defaults.string(forKey: key) != msg {
                 defaults.set(msg, forKey: key)
                 didChange = true
             }
+        } else if defaults.object(forKey: "partnerMessage") != nil {
+            defaults.removeObject(forKey: "partnerMessage")
+            didChange = true
+        }
+        if let myMsg = currentUser?.latestMessage {
+            let key = "myMessage"
+            if defaults.string(forKey: key) != myMsg {
+                defaults.set(myMsg, forKey: key)
+                didChange = true
+            }
+        } else if defaults.object(forKey: "myMessage") != nil {
+            defaults.removeObject(forKey: "myMessage")
+            didChange = true
         }
 
         // 6. Anniversary (stored as epoch seconds)
@@ -209,9 +224,61 @@ final class AppStateManager {
             }
         }
 
+        // 7. Avatar URLs for widget photo loading
+        syncAvatarURL(defaults: defaults, key: "myAvatarUrl", url: currentUser?.avatarUrl, didChange: &didChange)
+        syncAvatarURL(defaults: defaults, key: "partnerAvatarUrl", url: partner.avatarUrl, didChange: &didChange)
+
         if didChange {
             WidgetCenter.shared.reloadAllTimelines()
         }
+    }
+
+    /// Writes an avatar URL to the App Group when it changes.
+    private func syncAvatarURL(defaults: UserDefaults, key: String, url: String?, didChange: inout Bool) {
+        if let url {
+            if defaults.string(forKey: key) != url {
+                defaults.set(url, forKey: key)
+                didChange = true
+            }
+        } else if defaults.object(forKey: key) != nil {
+            defaults.removeObject(forKey: key)
+            didChange = true
+        }
+    }
+
+    /// Downloads avatar images into the App Group so widgets can render them offline.
+    func syncAvatarImagesToAppGroup() async {
+        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) else { return }
+
+        if let urlString = currentUser?.avatarUrl, let url = URL(string: urlString),
+           let data = try? await URLSession.shared.data(from: url).0 {
+            try? data.write(to: container.appendingPathComponent(AppGroup.myAvatarFileName), options: .atomic)
+        }
+
+        if let urlString = partnerProfile?.avatarUrl, let url = URL(string: urlString),
+           let data = try? await URLSession.shared.data(from: url).0 {
+            try? data.write(to: container.appendingPathComponent(AppGroup.partnerAvatarFileName), options: .atomic)
+        }
+
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// Saves a freshly picked avatar locally and uploads it to Supabase.
+    func uploadProfileAvatar(_ image: UIImage) async throws {
+        guard let data = image.resizedForAvatar()?.jpegData(compressionQuality: 0.85) else { return }
+
+        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) {
+            try data.write(to: container.appendingPathComponent(AppGroup.myAvatarFileName), options: .atomic)
+        }
+
+        _ = try await supabase.uploadProfileAvatar(data)
+        if let updated = try? await supabase.fetchProfile() {
+            currentUser = updated
+        }
+        if let partner = partnerProfile {
+            updateWidgetData(partner: partner)
+        }
+        await syncAvatarImagesToAppGroup()
     }
 
     /// After the user enters a partner code, links accounts and refreshes `currentCouple`.
@@ -266,9 +333,14 @@ final class AppStateManager {
             "partnerNoteUrl",
             "partnerName",
             "partnerMessage",
+            "myMessage",
+            "partnerAvatarUrl",
             "anniversaryDate"
         ]
         partnerKeys.forEach { defaults.removeObject(forKey: $0) }
+        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) {
+            try? FileManager.default.removeItem(at: container.appendingPathComponent(AppGroup.partnerAvatarFileName))
+        }
     }
 
     /// Subscribes to Realtime INSERT events on `couples` so the waiting partner's app

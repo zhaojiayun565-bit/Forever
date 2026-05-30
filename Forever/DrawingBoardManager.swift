@@ -223,17 +223,37 @@ final class DrawingBoardManager {
         }
     }
 
-    /// Rasterizes the current board and pushes it to the partner's note widget.
-    /// Reuses the note pipeline: upload PNG -> set `latest_note_url` -> webhook push + widget reload.
-    func sendToWidget() async {
+    /// Rasterizes the current board, pushes a tight crop to the partner widget, and saves
+    /// a full-board snapshot to the shared archive.
+    func sendToWidget(boardSize: CGSize, wallpaper: UIImage?) async {
         let strokes = committedStrokes + Array(remoteActiveStrokes.values)
-        guard let data = BoardSnapshotRenderer.png(strokes: strokes) else {
+        guard !strokes.isEmpty else {
             showToast(String(localized: "Draw something first"))
             return
         }
+        guard let widgetData = BoardSnapshotRenderer.widgetPNG(strokes: strokes) else {
+            showToast(String(localized: "Draw something first"))
+            return
+        }
+        guard let coupleId else { return }
+
         do {
-            let url = try await supabase.uploadNoteImage(data: data)
-            try await supabase.updateLatestNoteUrl(url: url)
+            let noteUrl = try await supabase.uploadNoteImage(data: widgetData)
+            try await supabase.updateLatestNoteUrl(url: noteUrl)
+
+            if let archiveData = BoardSnapshotRenderer.archiveJPEG(
+                strokes: strokes,
+                wallpaper: wallpaper,
+                boardSize: boardSize
+            ) {
+                let archiveUrl = try await supabase.uploadArchiveImage(data: archiveData)
+                try await supabase.insertArchivedDrawing(
+                    coupleId: coupleId,
+                    authorId: currentUserId,
+                    imageUrl: archiveUrl
+                )
+            }
+
             showToast(String(localized: "Sent to \(partnerName)'s widget"))
         } catch {
             print("🚨 Failed to send drawing to widget: \(error)")

@@ -212,8 +212,16 @@ struct DaysTogetherHeroCard: View {
     var body: some View {
         VStack(spacing: 16) {
             HStack(spacing: 20) {
-                AvatarView(url: nil, size: 72)
-                AvatarView(url: nil, size: 72)
+                AvatarView(
+                    url: state.currentUser?.avatarUrl.flatMap { URL(string: $0) },
+                    name: state.currentUser?.displayName ?? "Me",
+                    size: 72
+                )
+                AvatarView(
+                    url: state.partnerProfile?.avatarUrl.flatMap { URL(string: $0) },
+                    name: state.partnerProfile?.displayName ?? "Partner",
+                    size: 72
+                )
             }
             .overlay {
                 Image(systemName: "heart.fill")

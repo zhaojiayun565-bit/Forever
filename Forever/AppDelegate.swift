@@ -11,6 +11,8 @@ extension Notification.Name {
 enum AppGroup {
     static let suiteName = "group.com.jiayunzhao.Forever"
     static let pendingDeviceTokenKey = "pendingDeviceToken"
+    static let myAvatarFileName = "my-avatar.jpg"
+    static let partnerAvatarFileName = "partner-avatar.jpg"
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -33,9 +35,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         print("🚨 Failed to register for remote notifications: \(error)")
     }
     
-    /// Forces the widget timeline to refresh immediately on any background APNS push.
+    /// Applies push payload to App Group defaults, then reloads widget timelines.
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
         Task { @MainActor in
+            Self.syncWidgetDefaults(from: userInfo)
             WidgetCenter.shared.reloadAllTimelines()
         }
         completionHandler(.newData)
@@ -43,6 +46,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     // Allow notifications to show as banners even when the app is open
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        Self.syncWidgetDefaults(from: notification.request.content.userInfo)
+        WidgetCenter.shared.reloadAllTimelines()
         completionHandler([.banner, .sound, .badge])
     }
 
@@ -55,5 +60,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             }
         }
         completionHandler()
+    }
+
+    /// Writes partner note/message from a push payload into the App Group so widget reloads fetch fresh data.
+    private static func syncWidgetDefaults(from userInfo: [AnyHashable: Any]) {
+        guard let defaults = UserDefaults(suiteName: AppGroup.suiteName) else { return }
+        if let noteUrl = userInfo["note_url"] as? String, !noteUrl.isEmpty {
+            defaults.set(noteUrl, forKey: "partnerNoteUrl")
+        }
+        if let message = userInfo["latest_message"] as? String, !message.isEmpty {
+            defaults.set(message, forKey: "partnerMessage")
+        }
     }
 }

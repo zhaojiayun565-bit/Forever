@@ -7,6 +7,7 @@ enum DB {
     static let memories = "memories"
     static let notesBucket = "notes"
     static let drawingStrokes = "drawing_strokes"
+    static let drawingArchive = "drawing_archive"
 }
 
 enum PairingError: LocalizedError {
@@ -393,6 +394,33 @@ final class SupabaseManager: Sendable {
             .execute()
     }
 
+    /// Uploads a profile photo and saves its public URL on the signed-in user's profile.
+    func uploadProfileAvatar(_ imageData: Data) async throws -> String {
+        let session = try await client.auth.session
+        let path = "avatars/\(session.user.id.uuidString).jpg"
+
+        try await client.storage
+            .from(DB.notesBucket)
+            .upload(
+                path,
+                data: imageData,
+                options: FileOptions(contentType: "image/jpeg", upsert: true)
+            )
+
+        let publicUrl = try client.storage.from(DB.notesBucket).getPublicURL(path: path)
+        let urlString = publicUrl.absoluteString
+
+        struct AvatarUpdate: Encodable, Sendable {
+            let avatar_url: String
+        }
+        try await client.from(DB.profiles)
+            .update(AvatarUpdate(avatar_url: urlString))
+            .eq("id", value: session.user.id)
+            .execute()
+
+        return urlString
+    }
+
     /// Updates display name and anniversary date for the signed-in user.
     func updateProfileDetails(name: String, anniversary: Date) async throws {
         let session = try await client.auth.session
@@ -467,6 +495,42 @@ final class SupabaseManager: Sendable {
             .execute()
     }
 
+    /// Uploads a full-board archive JPEG to the notes bucket.
+    func uploadArchiveImage(data: Data) async throws -> URL {
+        let path = "archive/\(UUID().uuidString).jpg"
+        try await client.storage
+            .from(DB.notesBucket)
+            .upload(
+                path,
+                data: data,
+                options: FileOptions(contentType: "image/jpeg")
+            )
+        return try client.storage.from(DB.notesBucket).getPublicURL(path: path)
+    }
+
+    /// Inserts a sent drawing snapshot into the shared archive.
+    func insertArchivedDrawing(coupleId: UUID, authorId: UUID, imageUrl: URL) async throws {
+        let payload = DrawingArchiveInsert(
+            couple_id: coupleId,
+            author_id: authorId,
+            image_url: imageUrl.absoluteString
+        )
+        try await client.from(DB.drawingArchive)
+            .insert(payload)
+            .execute()
+    }
+
+    /// Loads archived drawings for a couple, newest first.
+    func fetchArchivedDrawings(coupleId: UUID) async throws -> [ArchivedDrawing] {
+        let rows: [DrawingArchiveRow] = try await client.from(DB.drawingArchive)
+            .select()
+            .eq("couple_id", value: coupleId)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+        return rows.map { $0.toArchivedDrawing() }
+    }
+
 }
 
 // MARK: - DTOs (Data Transfer Objects)
@@ -514,4 +578,29 @@ private nonisolated struct DeviceTokenUpdateDTO: Encodable, Sendable {
 
 private nonisolated struct MemoryCoupleAttachUpdate: Encodable, Sendable {
     let couple_id: UUID
+}
+
+private nonisolated struct DrawingArchiveInsert: Encodable, Sendable {
+    let couple_id: UUID
+    let author_id: UUID
+    let image_url: String
+}
+
+private nonisolated struct DrawingArchiveRow: Decodable, Sendable {
+    let id: UUID
+    let author_id: UUID
+    let image_url: String
+    let created_at: String
+
+    func toArchivedDrawing() -> ArchivedDrawing {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = formatter.date(from: created_at) ?? Date()
+        return ArchivedDrawing(
+            id: id,
+            authorId: author_id,
+            imageUrl: URL(string: image_url)!,
+            createdAt: date
+        )
+    }
 }

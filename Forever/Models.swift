@@ -12,6 +12,7 @@ struct Profile: Codable, Identifiable, Hashable {
     var batteryLevel: Int?
     var latestNoteUrl: String?
     var displayName: String?
+    var avatarUrl: String?
     var latestMessage: String?
     var anniversaryDate: Date?
     var deviceToken: String?
@@ -25,6 +26,7 @@ struct Profile: Codable, Identifiable, Hashable {
         case batteryLevel = "battery_level"
         case latestNoteUrl = "latest_note_url"
         case displayName = "display_name"
+        case avatarUrl = "avatar_url"
         case latestMessage = "latest_message"
         case anniversaryDate = "anniversary_date"
         case deviceToken = "device_token"
@@ -65,6 +67,16 @@ struct CoupleMemory: Identifiable, Equatable, Hashable {
     var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
+}
+
+// MARK: - Archived Drawing
+
+/// A sent drawing-board snapshot stored in the shared archive.
+struct ArchivedDrawing: Identifiable, Equatable, Hashable {
+    let id: UUID
+    let authorId: UUID
+    let imageUrl: URL
+    let createdAt: Date
 }
 
 // MARK: - Mocks for Previews

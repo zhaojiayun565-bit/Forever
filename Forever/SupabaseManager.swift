@@ -22,7 +22,7 @@ enum PairingError: LocalizedError {
 }
 
 /// Wraps `SupabaseClient` for auth and table access.
-final class SupabaseManager {
+final class SupabaseManager: Sendable {
     static let shared = SupabaseManager()
 
     let client: SupabaseClient
@@ -31,7 +31,11 @@ final class SupabaseManager {
         supabaseURL: URL = URL(string: "https://cdcnzkbxlyoxukxizfmd.supabase.co")!,
         supabaseKey: String = "sb_publishable_VygMgDm0S8and8KregtFyA_NF6tFRxK"
     ) {
-        client = SupabaseClient(supabaseURL: supabaseURL, supabaseKey: supabaseKey)
+        client = SupabaseClient(
+            supabaseURL: supabaseURL,
+            supabaseKey: supabaseKey,
+            options: .init(realtime: .init(logLevel: .info))
+        )
     }
 
     /// Returns the cached session if present; otherwise `nil` (does not throw for missing session).
@@ -294,8 +298,7 @@ final class SupabaseManager {
 
     /// Deletes the couple row to unpair both users.
     func deleteCouple(id: UUID) async throws {
-        try await client.database
-            .from(DB.couples)
+        try await client.from(DB.couples)
             .delete()
             .eq("id", value: id)
             .execute()

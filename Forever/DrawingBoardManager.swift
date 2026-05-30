@@ -76,7 +76,20 @@ final class DrawingBoardManager {
             }
         }
 
-        await channel.subscribe()
+        // Observe every status transition for the lifetime of the board.
+        let statusStream = channel.statusChange
+        Task {
+            for await status in statusStream {
+                print("🎨 [board] channel status -> \(status)")
+            }
+        }
+
+        do {
+            try await channel.subscribeWithError()
+            print("🎨 [board] subscribed OK. topic=\(channel.topic) status=\(channel.status)")
+        } catch {
+            print("🚨 [board] subscribe FAILED: \(error)")
+        }
         await loadExisting(coupleId: coupleId)
     }
 
@@ -154,7 +167,12 @@ final class DrawingBoardManager {
             points: points.flattened,
             isFinal: isFinal
         )
-        try? await channel.broadcast(event: BoardEvent.stroke, message: payload)
+        print("🎨 [board] SEND stroke pts=\(points.count) final=\(isFinal) status=\(channel.status)")
+        do {
+            try await channel.broadcast(event: BoardEvent.stroke, message: payload)
+        } catch {
+            print("🚨 [board] broadcast send failed: \(error)")
+        }
         if isFinal { activeStrokeId = nil }
     }
 
@@ -200,7 +218,18 @@ final class DrawingBoardManager {
     // MARK: - Incoming broadcast handlers
 
     private func handleStroke(_ json: JSONObject) {
-        guard let chunk = try? json["payload"]?.decode(as: StrokeChunkPayload.self) else { return }
+        print("🎨 [board] RECV raw=\(json)")
+        let chunk: StrokeChunkPayload
+        do {
+            guard let decoded = try json["payload"]?.decode(as: StrokeChunkPayload.self) else {
+                print("🚨 [board] RECV missing payload key")
+                return
+            }
+            chunk = decoded
+        } catch {
+            print("🚨 [board] RECV decode failed: \(error)")
+            return
+        }
         let newPoints = chunk.points.toCGPoints()
 
         if var existing = remoteActiveStrokes[chunk.authorId], existing.id == chunk.strokeId {
@@ -230,6 +259,7 @@ final class DrawingBoardManager {
     }
 
     private func handleUndo(_ json: JSONObject) {
+        print("🎨 [board] RECV undo")
         guard
             let payload = try? json["payload"]?.decode(as: BoardControlPayload.self),
             let strokeId = payload.strokeId
@@ -238,6 +268,7 @@ final class DrawingBoardManager {
     }
 
     private func handleClear(_ json: JSONObject) {
+        print("🎨 [board] RECV clear")
         committedStrokes.removeAll()
         remoteActiveStrokes.removeAll()
     }

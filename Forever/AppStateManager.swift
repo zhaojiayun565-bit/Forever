@@ -248,10 +248,14 @@ final class AppStateManager {
         pairingListenerTask = Task {
             let channel = supabase.client.realtimeV2
                 .channel("couple-link-\(userId)")
-            let inserts = await channel.postgresChange(
+            let inserts = channel.postgresChange(
                 InsertAction.self, schema: "public", table: "couples"
             )
-            await channel.subscribe()
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                print("🚨 Couple-link subscribe failed: \(error)")
+            }
             defer { Task { await self.supabase.client.realtimeV2.removeChannel(channel) } }
 
             for await _ in inserts {

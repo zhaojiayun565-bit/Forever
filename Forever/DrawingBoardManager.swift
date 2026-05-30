@@ -137,7 +137,8 @@ final class DrawingBoardManager {
 
         guard let coupleId else { return }
         do {
-            try await supabase.insertStroke(coupleId: coupleId, stroke: stroke)
+            let payload = DrawingStrokeInsert(coupleId: coupleId, stroke: stroke)
+            try await supabase.insertStroke(payload)
         } catch {
             print("🚨 Failed to persist stroke: \(error)")
         }

@@ -412,15 +412,7 @@ final class SupabaseManager: Sendable {
     }
 
     /// Persists a completed stroke (called once per stroke, never per point).
-    func insertStroke(coupleId: UUID, stroke: DrawStroke) async throws {
-        let payload = DrawingStrokeInsert(
-            id: stroke.id,
-            couple_id: coupleId,
-            author_id: stroke.authorId,
-            color_hex: stroke.colorHex,
-            width: stroke.width,
-            points: stroke.points.flattened
-        )
+    func insertStroke(_ payload: DrawingStrokeInsert) async throws {
         try await client.from(DB.drawingStrokes)
             .insert(payload)
             .execute()

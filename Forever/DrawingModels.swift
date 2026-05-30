@@ -52,7 +52,18 @@ struct DrawingStrokeInsert: Encodable, Sendable {
     let author_id: UUID
     let color_hex: String
     let width: Double
-    let points: [Double]
+    /// Stored in JSONB as an array of `[x, y]` pairs.
+    let points: [[Double]]
+
+    /// Seamlessly maps a local stroke (CGPoints) to the JSONB pair shape.
+    init(coupleId: UUID, stroke: DrawStroke) {
+        self.id = stroke.id
+        self.couple_id = coupleId
+        self.author_id = stroke.authorId
+        self.color_hex = stroke.colorHex
+        self.width = stroke.width
+        self.points = stroke.points.asPairs
+    }
 }
 
 /// Row decoded from the `drawing_strokes` table.
@@ -61,7 +72,8 @@ struct DrawingStrokeRow: Decodable, Sendable {
     let author_id: UUID
     let color_hex: String
     let width: Double
-    let points: [Double]
+    /// Stored in JSONB as an array of `[x, y]` pairs.
+    let points: [[Double]]
 
     func toDrawStroke() -> DrawStroke {
         DrawStroke(
@@ -77,19 +89,31 @@ struct DrawingStrokeRow: Decodable, Sendable {
 // MARK: - Point Packing Helpers
 
 extension Array where Element == CGPoint {
-    /// Flattens points into `[x0, y0, x1, y1, ...]` for compact transport/storage.
+    /// Flattens points into `[x0, y0, x1, y1, ...]` for compact realtime broadcast.
     var flattened: [Double] {
         flatMap { [Double($0.x), Double($0.y)] }
+    }
+
+    /// Maps points to `[[x, y], ...]` for JSONB storage.
+    var asPairs: [[Double]] {
+        map { [Double($0.x), Double($0.y)] }
     }
 }
 
 extension Array where Element == Double {
-    /// Rebuilds `[CGPoint]` from a flattened `[x0, y0, x1, y1, ...]` array.
+    /// Rebuilds `[CGPoint]` from a flattened `[x0, y0, x1, y1, ...]` array (broadcast path).
     func toCGPoints() -> [CGPoint] {
         guard count >= 2 else { return [] }
         return stride(from: 0, to: count - 1, by: 2).map {
             CGPoint(x: self[$0], y: self[$0 + 1])
         }
+    }
+}
+
+extension Array where Element == [Double] {
+    /// Rebuilds `[CGPoint]` from `[[x, y], ...]`, skipping malformed pairs (JSONB path).
+    func toCGPoints() -> [CGPoint] {
+        compactMap { $0.count == 2 ? CGPoint(x: $0[0], y: $0[1]) : nil }
     }
 }
 

@@ -7,7 +7,7 @@ CREATE TABLE public.drawing_strokes (
     author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     color_hex TEXT NOT NULL,
     width DOUBLE PRECISION NOT NULL,
-    -- Flattened, width-normalized points: [x0, y0, x1, y1, ...]
+    -- Width-normalized points as an array of [x, y] pairs: [[x, y], ...]
     points JSONB NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     PRIMARY KEY (id)
@@ -46,3 +46,6 @@ CREATE POLICY "Users can delete their couple's strokes" ON public.drawing_stroke
             WHERE user1_id = auth.uid() OR user2_id = auth.uid()
         )
     );
+
+-- Register the table on the realtime publication (enables Postgres Changes / CDC).
+alter publication supabase_realtime add table drawing_strokes;

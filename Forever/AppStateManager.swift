@@ -219,21 +219,22 @@ final class AppStateManager {
         WidgetCenter.shared.reloadAllTimelines()
     }
 
-    /// Deletes the relationship row and clears local pairing state.
+    /// Tears down the couple server-side, then clears local + widget state.
     func unpair() async {
-        guard let coupleId = currentCouple?.id else { return }
+        guard currentCouple != nil else { return }
 
         isLoading = true
         defer { isLoading = false }
 
         do {
-            // Delete the couple connection in Supabase first.
-            try await supabase.deleteCouple(id: coupleId)
+            // Atomically delete the couple, its memories, and drawings server-side first.
+            try await supabase.unpairCouple()
 
             // Reset local state so routing returns to pairing flow.
             currentCouple = nil
             partnerProfile = nil
             memories.removeAll()
+            clearPartnerWidgetData()
             WidgetCenter.shared.reloadAllTimelines()
             subscribeToCoupleLink()
 
@@ -241,6 +242,22 @@ final class AppStateManager {
         } catch {
             print("🚨 Failed to unpair: \(error)")
         }
+    }
+
+    /// Wipes partner-derived values from the App Group so widgets can't show stale data after unpairing.
+    private func clearPartnerWidgetData() {
+        guard let defaults = UserDefaults(suiteName: "group.com.jiayunzhao.Forever") else { return }
+        let partnerKeys = [
+            "partnerBattery",
+            "partnerDistance",
+            "partnerLatitude",
+            "partnerLongitude",
+            "partnerNoteUrl",
+            "partnerName",
+            "partnerMessage",
+            "anniversaryDate"
+        ]
+        partnerKeys.forEach { defaults.removeObject(forKey: $0) }
     }
 
     /// Subscribes to Realtime INSERT events on `couples` so the waiting partner's app

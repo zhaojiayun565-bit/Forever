@@ -8,6 +8,7 @@ enum OnboardingStep: Int, CaseIterable {
 }
 
 struct OnboardingView: View {
+    @Environment(AppStateManager.self) private var state
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("tempMyName") private var myName = ""
     @AppStorage("tempPartnerName") private var partnerName = ""
@@ -70,9 +71,22 @@ struct OnboardingView: View {
         currentStep = next
     }
 
+    /// Persists the user's onboarding details to Supabase, refreshes global state, then dismisses onboarding.
     private func completeOnboarding() {
-        withAnimation(.easeInOut(duration: 0.5)) {
-            hasCompletedOnboarding = true
+        Task {
+            let anniversaryDate = Date(timeIntervalSince1970: anniversary)
+
+            // Push details to Supabase (partnerName remains local until they pair)
+            try? await SupabaseManager.shared.updateProfileDetails(name: myName, anniversary: anniversaryDate)
+
+            // Refresh state so SettingsView fetches the updated currentUser
+            await state.initializeApp()
+
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    hasCompletedOnboarding = true
+                }
+            }
         }
     }
 }

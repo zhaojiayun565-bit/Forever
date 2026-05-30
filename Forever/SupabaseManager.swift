@@ -299,12 +299,9 @@ final class SupabaseManager: Sendable {
             .execute()
     }
 
-    /// Deletes the couple row to unpair both users.
-    func deleteCouple(id: UUID) async throws {
-        try await client.from(DB.couples)
-            .delete()
-            .eq("id", value: id)
-            .execute()
+    /// Atomically deletes the caller's couple plus its memories and drawings (server-side, RLS-safe).
+    func unpairCouple() async throws {
+        try await client.rpc("unpair_couple").execute()
     }
 
     /// Resolves a partner by pairing code and creates a `couples` row.

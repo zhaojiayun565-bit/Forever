@@ -34,7 +34,10 @@ final class SupabaseManager: Sendable {
         client = SupabaseClient(
             supabaseURL: supabaseURL,
             supabaseKey: supabaseKey,
-            options: .init(realtime: .init(logLevel: .info))
+            options: SupabaseClientOptions(
+                auth: .init(emitLocalSessionAsInitialSession: true),
+                realtime: .init(logLevel: .info)
+            )
         )
     }
 

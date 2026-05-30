@@ -214,7 +214,9 @@ final class AppStateManager {
         currentCouple = newlyFetchedCouple
         guard let user = currentUser else { return }
         try await supabase.attachSoloMemoriesToCouple(coupleId: newlyFetchedCouple.id, creatorId: user.id)
+        await loadPartnerProfile()
         await loadMemories()
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// Deletes the relationship row and clears local pairing state.
@@ -231,7 +233,8 @@ final class AppStateManager {
             // Reset local state so routing returns to pairing flow.
             currentCouple = nil
             partnerProfile = nil
-            memories = []
+            memories.removeAll()
+            WidgetCenter.shared.reloadAllTimelines()
             subscribeToCoupleLink()
 
             print("✅ Successfully unpaired. UI should now route to PairingView.")

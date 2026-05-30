@@ -69,7 +69,7 @@ struct HomeDashboardView: View {
                         CherishedTextsView()
                     } label: {
                         HStack(spacing: 16) {
-                            Image(systemName: "message.heart.fill")
+                            Image(systemName: "heart.text.square.fill")
                                 .font(.title2)
                                 .foregroundStyle(.pink)
                                 .frame(width: 44, height: 44)

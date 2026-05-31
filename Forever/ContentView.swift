@@ -10,13 +10,14 @@ struct ContentView: View {
     @State private var showSplash = true
 
     var body: some View {
-        Group {
+        ZStack {
             if showSplash {
                 SplashView {
                     withAnimation(.smooth(duration: 0.55)) {
                         showSplash = false
                     }
                 }
+                .zIndex(1)
                 .transition(.opacity)
             } else {
                 mainContent

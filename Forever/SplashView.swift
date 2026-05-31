@@ -27,19 +27,16 @@ struct SplashView: View {
             SplashBackground(glowPulse: glowPulse, phase: phase)
                 .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                Spacer()
+            Image(systemName: "heart.fill")
+                .font(.system(size: 112, weight: .regular))
+                .foregroundStyle(logoGradient)
+                .shadow(color: .pink.opacity(0.35), radius: 28, y: 12)
+                .scaleEffect(phase >= .logo ? 1 : 0.88)
+                .opacity(phase >= .logo ? 1 : 0)
+                .blur(radius: phase >= .logo ? 0 : 6)
 
-                Image(systemName: "heart.fill")
-                    .font(.system(size: 112, weight: .regular))
-                    .foregroundStyle(logoGradient)
-                    .shadow(color: .pink.opacity(0.35), radius: 28, y: 12)
-                    .scaleEffect(phase >= .logo ? 1 : 0.88)
-                    .opacity(phase >= .logo ? 1 : 0)
-                    .blur(radius: phase >= .logo ? 0 : 6)
-
+            VStack {
                 Spacer()
-                    .frame(height: 72)
 
                 Text("Forever")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
@@ -56,9 +53,7 @@ struct SplashView: View {
                     )
                     .opacity(phase >= .name ? 1 : 0)
                     .offset(y: phase >= .name ? 0 : 10)
-
-                Spacer()
-                    .frame(minHeight: 120)
+                    .padding(.bottom, 120)
             }
         }
         .scaleEffect(exitTrigger ? 1.03 : 1)

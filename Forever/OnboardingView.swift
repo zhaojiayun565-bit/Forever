@@ -4,7 +4,7 @@ import UserNotifications
 import AuthenticationServices
 
 enum OnboardingStep: Int, CaseIterable {
-    case myName, partnerName, anniversary, features, login, paywall
+    case myName, partnerName, anniversary, intent, features, login, paywall
 }
 
 struct OnboardingView: View {
@@ -52,6 +52,9 @@ struct OnboardingView: View {
                         set: { anniversary = $0.timeIntervalSince1970 }
                     ), action: advance)
                     .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
+                case .intent:
+                    IntentSelectionView(action: advance)
+                        .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
                 case .features:
                     FeatureCarouselView(tab: $featureTab, action: advance)
                         .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
@@ -178,6 +181,93 @@ struct AnniversaryInputView: View {
                     .cornerRadius(16)
             }
             .padding(.horizontal, 40)
+        }
+    }
+}
+
+struct IntentSelectionView: View {
+    @AppStorage("userIntent") private var storedIntent = ""
+    @State private var selectedIntent: IntentOption?
+
+    let action: () -> Void
+
+    enum IntentOption: String, CaseIterable, Identifiable {
+        case exploring, widgets, ldr, story, location, bond
+
+        var id: String { rawValue }
+
+        var text: String {
+            switch self {
+            case .exploring: "Just exploring"
+            case .widgets: "Use couples widgets"
+            case .ldr: "Stay close in long-distance"
+            case .story: "Record our love story"
+            case .location: "Know my partner's location"
+            case .bond: "Deepen our bond"
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Text("What brings you here?")
+                .font(.system(size: 36, weight: .bold, design: .rounded))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 14) {
+                    ForEach(IntentOption.allCases) { option in
+                        Button {
+                            withAnimation(.snappy(duration: 0.25)) {
+                                selectedIntent = option
+                            }
+                        } label: {
+                            Text(option.text)
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 18)
+                            .background(
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .fill(
+                                        selectedIntent == option
+                                            ? Color.pink.opacity(0.08)
+                                            : Color(UIColor.secondarySystemBackground)
+                                    )
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .stroke(selectedIntent == option ? Color.pink : Color.clear, lineWidth: 2)
+                            )
+                        }
+                        .buttonStyle(BubblyButtonStyle())
+                    }
+                }
+                .padding(.horizontal, 40)
+                .padding(.vertical, 4)
+            }
+
+            Button {
+                if let selectedIntent {
+                    storedIntent = selectedIntent.rawValue
+                }
+                action()
+            } label: {
+                Text("Continue")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(selectedIntent == nil ? Color.gray : Color.pink)
+                    .cornerRadius(16)
+            }
+            .disabled(selectedIntent == nil)
+            .padding(.horizontal, 40)
+        }
+        .onAppear {
+            selectedIntent = IntentOption(rawValue: storedIntent)
         }
     }
 }

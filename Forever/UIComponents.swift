@@ -22,6 +22,46 @@ struct BubblyButtonStyle: ButtonStyle {
     }
 }
 
+typealias ScaleButtonStyle = BubblyButtonStyle
+
+struct PairingCardView: View {
+    var showsShadow: Bool = true
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                Image(systemName: "link")
+                    .font(.title2)
+                    .foregroundStyle(.pink)
+                    .frame(width: 44, height: 44)
+                    .background(.pink.opacity(0.15), in: Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Connect Partner")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    Text("Enjoy the full app experience together")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .shadow(color: showsShadow ? .black.opacity(0.04) : .clear, radius: 12, x: 0, y: 6)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// Minus badge matching the iOS Home Screen edit-mode remove control.
 struct EditModeRemoveBadge: View {
     let action: () -> Void

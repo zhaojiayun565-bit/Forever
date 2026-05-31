@@ -25,9 +25,7 @@ struct SettingsView: View {
     @State private var isSaving = false
     @State private var isShowingUnpairAlert = false
     @AppStorage("distanceUnit") private var distanceUnit = DistanceUnitOption.miles.rawValue
-    @State private var partnerCode = ""
-    @State private var isLinking = false
-    @State private var pairingError: String?
+    @State private var showPairingSheet = false
     @State private var showPhotoOptions = false
     @State private var showCamera = false
     @State private var showPhotoLibrary = false
@@ -86,6 +84,16 @@ struct SettingsView: View {
                     }
                 }
 
+                if state.currentCouple == nil {
+                    Section {
+                        PairingCardView(showsShadow: false) {
+                            showPairingSheet = true
+                        }
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                        .listRowBackground(Color.clear)
+                    }
+                }
+
                 Section("Couple Details") {
                     TextField("Your Display Name", text: $displayName)
                     DatePicker("Anniversary", selection: $anniversary, displayedComponents: .date)
@@ -121,54 +129,6 @@ struct SettingsView: View {
                     .pickerStyle(.menu)
                 }
 
-                Section("Pairing") {
-                    HStack {
-                        Text("Your Invite Code")
-                        Spacer()
-                        Text(state.currentUser?.pairingCode ?? "----")
-                            .font(.system(.body, design: .monospaced).weight(.bold))
-                            .foregroundStyle(.blue)
-                    }
-
-                    if state.currentCouple == nil {
-                        VStack(alignment: .leading, spacing: 8) {
-                            TextField("Partner's 6-Digit Code", text: $partnerCode)
-                                .textContentType(.oneTimeCode)
-                                .textInputAutocapitalization(.characters)
-                                .padding(.vertical, 4)
-
-                            if let pairingError {
-                                Text(pairingError)
-                                    .font(.caption)
-                                    .foregroundStyle(.red)
-                            }
-
-                            Button {
-                                Task {
-                                    isLinking = true
-                                    pairingError = nil
-                                    do {
-                                        try await state.linkWithPartner(code: partnerCode)
-                                    } catch {
-                                        pairingError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                                    }
-                                    isLinking = false
-                                }
-                            } label: {
-                                if isLinking {
-                                    ProgressView()
-                                } else {
-                                    Text("Link Partner")
-                                        .fontWeight(.bold)
-                                }
-                            }
-                            .disabled(partnerCode.trimmingCharacters(in: .whitespacesAndNewlines).count < 6 || isLinking)
-                            .buttonStyle(.borderless)
-                            .tint(.pink)
-                        }
-                    }
-                }
-                
                 Section("About") {
                     Link("Terms of Service", destination: URL(string: "https://apple.com")!)
                     Link("Privacy Policy", destination: URL(string: "https://apple.com")!)
@@ -248,6 +208,10 @@ struct SettingsView: View {
                 CameraImagePicker(source: .photoLibrary) { image in
                     Task { await uploadAvatar(image) }
                 }
+            }
+            .fullScreenCover(isPresented: $showPairingSheet) {
+                PairingView()
+                    .environment(state)
             }
         }
     }

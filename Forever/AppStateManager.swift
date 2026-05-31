@@ -26,6 +26,7 @@ final class AppStateManager {
     var isLoading = true
     private var pairingListenerTask: Task<Void, Never>?
     private var partnerLocationListenerTask: Task<Void, Never>?
+    private var memoriesListenerTask: Task<Void, Never>?
 
     init(supabase: SupabaseManager = .shared) {
         self.supabase = supabase
@@ -54,6 +55,7 @@ final class AppStateManager {
                     // start listening for the partner's live location changes.
                     await syncAndRefreshWidgets()
                     subscribeToPartnerLocation()
+                    subscribeToMemories()
                 } else {
                     await loadPartnerProfile()
                     subscribeToCoupleLink()
@@ -62,6 +64,7 @@ final class AppStateManager {
                 print("✅ SUCCESS: Profile loaded.")
             } else {
                 // Not logged in. Clear state so LoginView shows.
+                cancelRealtimeListeners()
                 currentUser = nil
                 currentCouple = nil
                 partnerProfile = nil
@@ -69,10 +72,21 @@ final class AppStateManager {
             }
         } catch {
             print("🚨 INIT ERROR: \(error)")
+            cancelRealtimeListeners()
             currentUser = nil
             currentCouple = nil
             partnerProfile = nil
         }
+    }
+
+    /// Stops all Realtime listener tasks (sign-out, unpair, or auth failure).
+    private func cancelRealtimeListeners() {
+        pairingListenerTask?.cancel()
+        pairingListenerTask = nil
+        partnerLocationListenerTask?.cancel()
+        partnerLocationListenerTask = nil
+        memoriesListenerTask?.cancel()
+        memoriesListenerTask = nil
     }
 
     /// Uploads our location to Supabase, refreshes currentUser so its lat/lon is current,
@@ -292,6 +306,7 @@ final class AppStateManager {
         await loadPartnerProfile()
         await loadMemories()
         subscribeToPartnerLocation()
+        subscribeToMemories()
         WidgetCenter.shared.reloadAllTimelines()
     }
 
@@ -307,8 +322,7 @@ final class AppStateManager {
             try await supabase.unpairCouple()
 
             // Reset local state so routing returns to pairing flow.
-            partnerLocationListenerTask?.cancel()
-            partnerLocationListenerTask = nil
+            cancelRealtimeListeners()
             currentCouple = nil
             partnerProfile = nil
             memories.removeAll()
@@ -368,8 +382,59 @@ final class AppStateManager {
                     await loadPartnerProfile()
                     await loadMemories()
                     subscribeToPartnerLocation()
+                    subscribeToMemories()
                 }
                 return
+            }
+        }
+    }
+
+    /// Subscribes to Realtime INSERT/UPDATE/DELETE on `memories` so the map refreshes
+    /// the moment either partner adds, edits, or removes a pin.
+    private func subscribeToMemories() {
+        guard let coupleId = currentCouple?.id else { return }
+
+        memoriesListenerTask?.cancel()
+        memoriesListenerTask = Task {
+            let channel = supabase.client.realtimeV2
+                .channel("couple-memories-\(coupleId)")
+            let filter = "couple_id=eq.\(coupleId)"
+            let inserts = channel.postgresChange(
+                InsertAction.self, schema: "public", table: "memories", filter: filter
+            )
+            let updates = channel.postgresChange(
+                UpdateAction.self, schema: "public", table: "memories", filter: filter
+            )
+            let deletes = channel.postgresChange(
+                DeleteAction.self, schema: "public", table: "memories", filter: filter
+            )
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                print("🚨 Memories subscribe failed: \(error)")
+                return
+            }
+            defer { Task { await self.supabase.client.realtimeV2.removeChannel(channel) } }
+
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    for await _ in inserts {
+                        guard !Task.isCancelled else { return }
+                        await self.loadMemories()
+                    }
+                }
+                group.addTask {
+                    for await _ in updates {
+                        guard !Task.isCancelled else { return }
+                        await self.loadMemories()
+                    }
+                }
+                group.addTask {
+                    for await _ in deletes {
+                        guard !Task.isCancelled else { return }
+                        await self.loadMemories()
+                    }
+                }
             }
         }
     }

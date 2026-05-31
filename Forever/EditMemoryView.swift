@@ -176,11 +176,8 @@ struct EditMemoryView: View {
     private func fetchLocationName() {
         guard locationName == nil, let coord = coordinate else { return }
         Task {
-            let geocoder = CLGeocoder()
-            let location = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
-            if let placemarks = try? await geocoder.reverseGeocodeLocation(location),
-               let first = placemarks.first {
-                locationName = first.name ?? first.locality ?? "Selected"
+            if let name = await GeocodingHelper.placeName(for: coord) {
+                locationName = name
             }
         }
     }

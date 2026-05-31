@@ -21,9 +21,21 @@ class LocationSearchService: NSObject, MKLocalSearchCompleterDelegate {
         completer.delegate = self
     }
 
+    /// Biases autocomplete toward the visible map region.
+    func updateRegion(_ region: MKCoordinateRegion) {
+        completer.region = region
+    }
+
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         DispatchQueue.main.async {
             self.completions = completer.results
+        }
+    }
+
+    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
+        DispatchQueue.main.async {
+            self.completions = []
+            print("🚨 Location search failed: \(error.localizedDescription)")
         }
     }
 }

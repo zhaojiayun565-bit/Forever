@@ -45,7 +45,7 @@ struct MemoryDetailView: View {
                             selection: currentImageIndex
                         )
                         .padding(.top, 12)
-                        .padding(.bottom, hasNote ? 16 : 24)
+                        .padding(.bottom, hasNote ? 0 : 24)
                     }
 
                     if let note = memory.note, !note.isEmpty {
@@ -58,6 +58,7 @@ struct MemoryDetailView: View {
                             .background(.ultraThinMaterial)
                             .environment(\.colorScheme, .dark)
                             .clipShape(RoundedRectangle(cornerRadius: 24))
+                            .padding(.top, 16)
                             .padding(.horizontal, 20)
                             .padding(.bottom, 20)
                     }

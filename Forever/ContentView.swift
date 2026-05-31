@@ -46,7 +46,10 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active && state.currentCouple != nil {
-                Task { await state.syncAndRefreshWidgets() }
+                Task {
+                    await state.syncAndRefreshWidgets()
+                    await state.loadMemories()
+                }
             }
         }
         .fullScreenCover(isPresented: $showDrawingBoard) {

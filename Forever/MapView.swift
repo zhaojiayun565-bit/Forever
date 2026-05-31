@@ -85,6 +85,9 @@ struct MapDashboardView: View {
             .task {
                 await state.loadMemories()
             }
+            .refreshable {
+                await state.loadMemories()
+            }
             .fullScreenCover(isPresented: $showingAddMemory) {
                 AddMemoryView()
                     .environment(state)

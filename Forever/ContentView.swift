@@ -7,37 +7,20 @@ struct ContentView: View {
     @AppStorage("hasSkippedPairing") private var hasSkippedPairing = false
     @Environment(\.scenePhase) var scenePhase
     @State private var showDrawingBoard = false
+    @State private var showSplash = true
 
     var body: some View {
         Group {
-            if !hasCompletedOnboarding {
-                // State 0: App Store Onboarding
-                OnboardingView()
-            } else if state.isLoading {
-                // Loading State
-                ProgressView()
-            } else if state.currentUser == nil {
-                // State 1: Not Logged In
-                LoginView()
-            } else if state.currentCouple == nil && !hasSkippedPairing {
-                // State 2: Logged in, but no partner paired
-                PairingView()
-            } else {
-                // State 3: Fully paired (or exploring solo)
-                TabView {
-                    HomeDashboardView()
-                        .tabItem { Label("Us", systemImage: "heart.fill") }
-
-                    MapDashboardView()
-                        .tabItem { Label("Map", systemImage: "map.fill") }
-
-                    ArchiveView()
-                        .tabItem { Label("Archive", systemImage: "square.grid.2x2.fill") }
-
-                    SettingsView()
-                        .tabItem { Label("Me", systemImage: "person.circle.fill") }
+            if showSplash {
+                SplashView {
+                    withAnimation(.smooth(duration: 0.55)) {
+                        showSplash = false
+                    }
                 }
-                .tint(.pink)
+                .transition(.opacity)
+            } else {
+                mainContent
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
         .task {
@@ -63,6 +46,34 @@ struct ContentView: View {
             if url.host == "drawingboard", state.currentCouple != nil {
                 showDrawingBoard = true
             }
+        }
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
+        if !hasCompletedOnboarding {
+            OnboardingView()
+        } else if state.isLoading {
+            ProgressView()
+        } else if state.currentUser == nil {
+            LoginView()
+        } else if state.currentCouple == nil && !hasSkippedPairing {
+            PairingView()
+        } else {
+            TabView {
+                HomeDashboardView()
+                    .tabItem { Label("Us", systemImage: "heart.fill") }
+
+                MapDashboardView()
+                    .tabItem { Label("Map", systemImage: "map.fill") }
+
+                ArchiveView()
+                    .tabItem { Label("Archive", systemImage: "square.grid.2x2.fill") }
+
+                SettingsView()
+                    .tabItem { Label("Me", systemImage: "person.circle.fill") }
+            }
+            .tint(.pink)
         }
     }
 

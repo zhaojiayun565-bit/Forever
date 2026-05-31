@@ -19,7 +19,15 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            Color(UIColor.systemBackground).ignoresSafeArea()
+            LinearGradient(
+                colors: [
+                    Color(red: 0.07, green: 0.04, blue: 0.14).opacity(0.08),
+                    Color(UIColor.systemBackground)
+                ],
+                startPoint: .top,
+                endPoint: .center
+            )
+            .ignoresSafeArea()
 
             VStack {
                 // Dynamic Progress Bar

@@ -215,6 +215,7 @@ struct DaysTogetherHeroCard: View {
                 AvatarView(
                     url: state.currentUser?.avatarUrl.flatMap { URL(string: $0) },
                     name: state.currentUser?.displayName ?? "Me",
+                    localImage: state.myAvatarImage,
                     size: 72
                 )
                 AvatarView(

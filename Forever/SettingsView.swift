@@ -31,7 +31,6 @@ struct SettingsView: View {
     @State private var showPhotoOptions = false
     @State private var showCamera = false
     @State private var showPhotoLibrary = false
-    @State private var pendingAvatarImage: UIImage?
     @State private var isUploadingAvatar = false
     @State private var avatarError: String?
 
@@ -61,7 +60,7 @@ struct SettingsView: View {
                                 AvatarView(
                                     url: state.currentUser?.avatarUrl.flatMap { URL(string: $0) },
                                     name: displayName.isEmpty ? (state.currentUser?.displayName ?? "Me") : displayName,
-                                    localImage: pendingAvatarImage,
+                                    localImage: state.myAvatarImage,
                                     size: 96
                                 )
                                 if isUploadingAvatar {
@@ -255,13 +254,11 @@ struct SettingsView: View {
 
     /// Uploads the picked photo and refreshes widget avatars.
     private func uploadAvatar(_ image: UIImage) async {
-        pendingAvatarImage = image
         isUploadingAvatar = true
         avatarError = nil
         defer { isUploadingAvatar = false }
         do {
             try await state.uploadProfileAvatar(image)
-            pendingAvatarImage = nil
         } catch {
             avatarError = error.localizedDescription
         }

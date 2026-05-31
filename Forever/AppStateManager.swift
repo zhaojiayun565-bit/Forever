@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import Kingfisher
 import Observation
 import UIKit
 import WidgetKit
@@ -20,6 +21,8 @@ final class AppStateManager {
     var currentUser: Profile?
     var currentCouple: Couple?
     var partnerProfile: Profile?
+    /// Locally cached profile photo (App Group file); kept in sync after pick/upload.
+    var myAvatarImage: UIImage?
     var memories: [CoupleMemory] = []
     /// Set after saving a memory so the map can animate to it; cleared by the map after handling.
     var newlyAddedLocation: NewlyAddedMemoryCoordinate?
@@ -48,6 +51,7 @@ final class AppStateManager {
                 }
 
                 currentUser = profile
+                loadMyAvatarFromAppGroup()
                 currentCouple = try await supabase.fetchCurrentCouple()
                 if currentCouple != nil {
                     // Paired: upload our location now (a cold launch never triggers the
@@ -68,6 +72,7 @@ final class AppStateManager {
                 currentUser = nil
                 currentCouple = nil
                 partnerProfile = nil
+                myAvatarImage = nil
                 print("🔒 User is not authenticated. Awaiting login.")
             }
         } catch {
@@ -76,7 +81,16 @@ final class AppStateManager {
             currentUser = nil
             currentCouple = nil
             partnerProfile = nil
+            myAvatarImage = nil
         }
+    }
+
+    /// Loads the signed-in user's avatar from the App Group cache.
+    private func loadMyAvatarFromAppGroup() {
+        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) else { return }
+        let fileURL = container.appendingPathComponent(AppGroup.myAvatarFileName)
+        guard let data = try? Data(contentsOf: fileURL), let image = UIImage(data: data) else { return }
+        myAvatarImage = image
     }
 
     /// Stops all Realtime listener tasks (sign-out, unpair, or auth failure).
@@ -281,13 +295,21 @@ final class AppStateManager {
     func uploadProfileAvatar(_ image: UIImage) async throws {
         guard let data = image.resizedForAvatar()?.jpegData(compressionQuality: 0.85) else { return }
 
+        myAvatarImage = image
         if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) {
             try data.write(to: container.appendingPathComponent(AppGroup.myAvatarFileName), options: .atomic)
+        }
+
+        if let urlString = currentUser?.avatarUrl, let url = URL(string: urlString) {
+            try? await ImageCache.default.removeImage(forKey: url.absoluteString)
         }
 
         _ = try await supabase.uploadProfileAvatar(data)
         if let updated = try? await supabase.fetchProfile() {
             currentUser = updated
+            if let urlString = updated.avatarUrl, let url = URL(string: urlString) {
+                try? await ImageCache.default.removeImage(forKey: url.absoluteString)
+            }
         }
         if let partner = partnerProfile {
             updateWidgetData(partner: partner)

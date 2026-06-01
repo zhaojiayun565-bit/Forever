@@ -4,7 +4,7 @@ import UserNotifications
 import AuthenticationServices
 
 enum OnboardingStep: Int, CaseIterable {
-    case myName, partnerName, anniversary, intent, features, login, paywall
+    case myName, partnerName, anniversary, intent, features, login, investment, paywall
 }
 
 struct OnboardingView: View {
@@ -58,11 +58,14 @@ struct OnboardingView: View {
                 case .features:
                     FeatureCarouselView(tab: $featureTab, action: advance)
                         .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
-                case .login: // NEW STEP
+                case .login:
                     OnboardingLoginView(action: advance)
                         .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
+                case .investment:
+                    OnboardingInvestmentView(onContinue: advance)
+                        .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
                 case .paywall:
-                    PaywallView {
+                    OnboardingPaywallStep {
                         completeOnboarding()
                     }
                     .transition(.asymmetric(insertion: .move(edge: .bottom), removal: .opacity))
@@ -369,65 +372,23 @@ struct FeaturePage: View {
     }
 }
 
-struct PaywallView: View {
-    let onDismiss: () -> Void
+/// Onboarding paywall: RevenueCat UI with skip path for free tier.
+struct OnboardingPaywallStep: View {
+    let onContinue: () -> Void
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
+        VStack(spacing: 0) {
+            ForeverPaywallView(
+                onCompleted: onContinue,
+                onDismiss: onContinue
+            )
 
-            Image(systemName: "heart.fill")
-                .font(.system(size: 80))
-                .foregroundStyle(.pink)
-                .shadow(color: .pink.opacity(0.5), radius: 20, x: 0, y: 10)
-
-            Text("Forever Premium")
-                .font(.system(size: 36, weight: .black, design: .rounded))
-
-            VStack(alignment: .leading, spacing: 16) {
-                PaywallFeatureRow(text: "Unlimited Map Memories")
-                PaywallFeatureRow(text: "All Lock Screen Widgets")
-                PaywallFeatureRow(text: "Custom Drawing Colors")
-                PaywallFeatureRow(text: "Priority Syncing")
+            Button("Continue without Pro") {
+                onContinue()
             }
-            .padding(.vertical, 20)
-
-            Spacer()
-
-            Text("3 Days Free, then $4.99/month")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-
-            Button(action: onDismiss) {
-                Text("Start Free Trial")
-                    .font(.title3.weight(.bold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(LinearGradient(colors: [.pink, .purple], startPoint: .leading, endPoint: .trailing))
-                    .cornerRadius(20)
-                    .shadow(color: .pink.opacity(0.3), radius: 10, y: 5)
-            }
-            .padding(.horizontal, 30)
-
-            Button(action: onDismiss) { // For now, dismisses. Will link to RevenueCat later.
-                Text("Restore Purchases")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.bottom, 20)
-        }
-    }
-}
-
-struct PaywallFeatureRow: View {
-    let text: String
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundColor(.pink)
-            Text(text)
-                .font(.headline)
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 12)
         }
     }
 }

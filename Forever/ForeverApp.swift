@@ -17,6 +17,7 @@ struct ForeverApp: App {
     @State private var appState = AppStateManager()
 
     init() {
+        SubscriptionManager.configure()
         let cache = ImageCache.default
         cache.memoryStorage.config.totalCostLimit = 50 * 1024 * 1024
         cache.diskStorage.config.sizeLimit = 250 * 1024 * 1024
@@ -27,6 +28,10 @@ struct ForeverApp: App {
         WindowGroup {
             ContentView()
                 .environment(appState)
+                .environment(SubscriptionManager.shared)
+                .task {
+                    SubscriptionManager.shared.start()
+                }
         }
         .modelContainer(SharedDatabase.shared)
     }

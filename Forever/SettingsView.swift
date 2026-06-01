@@ -19,6 +19,7 @@ private enum DistanceUnitOption: String, CaseIterable {
 
 struct SettingsView: View {
     @Environment(AppStateManager.self) private var state
+    @Environment(SubscriptionManager.self) private var subscription
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @State private var displayName = ""
     @State private var anniversary = Date()
@@ -31,6 +32,9 @@ struct SettingsView: View {
     @State private var showPhotoLibrary = false
     @State private var isUploadingAvatar = false
     @State private var avatarError: String?
+    @State private var showPaywall = false
+    @State private var showCustomerCenter = false
+    @State private var subscriptionAlert: String?
 
     private var normalizedDistanceUnit: String {
         DistanceUnitOption(rawValue: distanceUnit)?.rawValue ?? DistanceUnitOption.miles.rawValue
@@ -118,6 +122,40 @@ struct SettingsView: View {
                         }
                     }
                     .disabled(displayName.isEmpty)
+                }
+
+                Section("Forever Pro") {
+                    if subscription.isPro {
+                        Label("Forever: App for Couples Pro", systemImage: "checkmark.seal.fill")
+                            .foregroundStyle(.pink)
+                        if let expiration = subscription.activeProExpirationDate {
+                            Text("Renews \(expiration.formatted(date: .abbreviated, time: .omitted))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Button("Manage Subscription") {
+                            showCustomerCenter = true
+                        }
+                    } else {
+                        Text("Unlock unlimited memories, widgets, and more.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Button("Upgrade to Pro") {
+                            showPaywall = true
+                        }
+                        .fontWeight(.semibold)
+                    }
+
+                    Button("Restore Purchases") {
+                        Task {
+                            do {
+                                _ = try await subscription.restorePurchases()
+                            } catch {
+                                subscriptionAlert = error.localizedDescription
+                            }
+                        }
+                    }
+                    .disabled(subscription.isLoading)
                 }
 
                 Section("Preferences") {
@@ -212,6 +250,19 @@ struct SettingsView: View {
             .fullScreenCover(isPresented: $showPairingSheet) {
                 PairingView()
                     .environment(state)
+            }
+            .foreverPaywall(isPresented: $showPaywall)
+            .foreverCustomerCenter(isPresented: $showCustomerCenter)
+            .alert("Subscription", isPresented: Binding(
+                get: { subscriptionAlert != nil },
+                set: { if !$0 { subscriptionAlert = nil } }
+            )) {
+                Button("OK", role: .cancel) { subscriptionAlert = nil }
+            } message: {
+                Text(subscriptionAlert ?? "")
+            }
+            .task {
+                await subscription.refresh()
             }
         }
     }

@@ -24,6 +24,27 @@ struct BubblyButtonStyle: ButtonStyle {
 
 typealias ScaleButtonStyle = BubblyButtonStyle
 
+/// Full-width pink Continue button used across onboarding.
+struct OnboardingContinueButton: View {
+    let title: String
+    var isEnabled: Bool = true
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.headline)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(isEnabled ? Color.pink : Color.gray)
+                .cornerRadius(16)
+        }
+        .disabled(!isEnabled)
+        .buttonStyle(ScaleButtonStyle())
+    }
+}
+
 struct PairingCardView: View {
     var showsShadow: Bool = true
     var action: () -> Void

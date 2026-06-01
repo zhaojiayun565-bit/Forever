@@ -41,7 +41,8 @@ final class AppStateManager {
         defer { isLoading = false }
         do {
             // 1. Check if user is actually logged in
-            if await supabase.getSession() != nil {
+            if let session = await supabase.getSession() {
+                await SubscriptionManager.shared.syncUserID(session.user.id.uuidString)
                 // 2. Fetch or create their database profile
                 var profile = try await supabase.fetchProfile()
                 if profile == nil {
@@ -67,6 +68,7 @@ final class AppStateManager {
                 await flushPendingDeviceToken()
                 print("✅ SUCCESS: Profile loaded.")
             } else {
+                await SubscriptionManager.shared.syncUserID(nil)
                 // Not logged in. Clear state so LoginView shows.
                 cancelRealtimeListeners()
                 currentUser = nil

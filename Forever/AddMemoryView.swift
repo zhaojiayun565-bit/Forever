@@ -152,10 +152,6 @@ struct AddMemoryView: View {
     }
 
     private func saveMemory() async {
-        guard let creatorId = state.currentUser?.id else {
-            errorMessage = "Authentication error. Please log in again."
-            return
-        }
         guard let lat = coordinate?.latitude, let lng = coordinate?.longitude else {
             errorMessage = "Please select a valid location."
             return
@@ -165,47 +161,12 @@ struct AddMemoryView: View {
         defer { isSaving = false }
 
         do {
-            let coupleIdForMemory = state.currentCouple?.id
-            let uploadedUrls = try await withThrowingTaskGroup(of: URL.self) { group in
-                for image in selectedImages {
-                    if let data = image.jpegData(compressionQuality: 0.7) {
-                        group.addTask {
-                            try await SupabaseManager.shared.uploadMemoryImage(
-                                data: data,
-                                coupleId: coupleIdForMemory,
-                                creatorId: creatorId
-                            )
-                        }
-                    }
-                }
-
-                var urls: [URL] = []
-                for try await url in group {
-                    urls.append(url)
-                }
-                return urls
-            }
-
-            guard !uploadedUrls.isEmpty else {
-                throw NSError(
-                    domain: "",
-                    code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: "Failed to process images. Please try again."]
-                )
-            }
-
-            try await SupabaseManager.shared.insertMemory(
-                coupleId: coupleIdForMemory,
-                creatorId: creatorId,
-                imageUrls: uploadedUrls,
-                lat: lat,
-                lng: lng,
-                date: date,
-                note: note
+            try await state.saveMemory(
+                images: selectedImages,
+                note: note,
+                coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng),
+                date: date
             )
-            await state.loadMemories()
-
-            state.newlyAddedLocation = NewlyAddedMemoryCoordinate(latitude: lat, longitude: lng)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

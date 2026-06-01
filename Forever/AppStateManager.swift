@@ -12,6 +12,15 @@ struct NewlyAddedMemoryCoordinate: Equatable {
     let longitude: Double
 }
 
+/// First memory captured during onboarding; uploaded after Apple Sign-In.
+struct PendingOnboardingMemory: Codable, Equatable {
+    let imageFileName: String
+    let note: String
+    let latitude: Double
+    let longitude: Double
+    let createdAt: Date
+}
+
 /// App-wide session, profile, and pairing state.
 @MainActor
 @Observable
@@ -148,6 +157,150 @@ final class AppStateManager {
             memories = try await supabase.fetchMemories(coupleId: currentCouple?.id, creatorId: user.id)
         } catch {
             print("🚨 Fetch Memories Error: \(error)")
+        }
+    }
+
+    /// Stages the onboarding first memory locally until the user signs in with Apple.
+    func stageOnboardingMemory(image: UIImage, note: String, coordinate: CLLocationCoordinate2D) throws {
+        guard let data = image.jpegData(compressionQuality: 0.7) else {
+            throw NSError(
+                domain: "OnboardingMemory",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Could not process the photo."]
+            )
+        }
+        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) else {
+            throw NSError(
+                domain: "OnboardingMemory",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Storage unavailable."]
+            )
+        }
+
+        let fileName = AppGroup.pendingOnboardingMemoryFileName
+        let fileURL = container.appendingPathComponent(fileName)
+        try data.write(to: fileURL, options: .atomic)
+
+        let pending = PendingOnboardingMemory(
+            imageFileName: fileName,
+            note: note,
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+            createdAt: Date()
+        )
+        persistPendingOnboardingMemory(pending)
+    }
+
+    /// Uploads a staged onboarding memory after authentication.
+    func flushPendingOnboardingMemory() async {
+        guard let pending = loadPendingOnboardingMemory(), currentUser != nil else { return }
+        guard let image = loadPendingOnboardingImage(pending) else {
+            clearPendingOnboardingMemory()
+            return
+        }
+
+        let coordinate = CLLocationCoordinate2D(latitude: pending.latitude, longitude: pending.longitude)
+        do {
+            try await saveMemory(
+                images: [image],
+                note: pending.note,
+                coordinate: coordinate,
+                date: pending.createdAt
+            )
+            clearPendingOnboardingMemory()
+        } catch {
+            print("🚨 Flush onboarding memory error: \(error)")
+        }
+    }
+
+    /// Uploads images and inserts a memory row (solo or coupled).
+    func saveMemory(
+        images: [UIImage],
+        note: String,
+        coordinate: CLLocationCoordinate2D,
+        date: Date = Date()
+    ) async throws {
+        guard let creatorId = currentUser?.id else {
+            throw NSError(
+                domain: "Memory",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Authentication error. Please log in again."]
+            )
+        }
+
+        let coupleIdForMemory = currentCouple?.id
+        let uploadedUrls = try await withThrowingTaskGroup(of: URL.self) { group in
+            for image in images {
+                if let data = image.jpegData(compressionQuality: 0.7) {
+                    group.addTask {
+                        try await self.supabase.uploadMemoryImage(
+                            data: data,
+                            coupleId: coupleIdForMemory,
+                            creatorId: creatorId
+                        )
+                    }
+                }
+            }
+
+            var urls: [URL] = []
+            for try await url in group {
+                urls.append(url)
+            }
+            return urls
+        }
+
+        guard !uploadedUrls.isEmpty else {
+            throw NSError(
+                domain: "Memory",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to process images. Please try again."]
+            )
+        }
+
+        try await supabase.insertMemory(
+            coupleId: coupleIdForMemory,
+            creatorId: creatorId,
+            imageUrls: uploadedUrls,
+            lat: coordinate.latitude,
+            lng: coordinate.longitude,
+            date: date,
+            note: note
+        )
+        await loadMemories()
+        newlyAddedLocation = NewlyAddedMemoryCoordinate(
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude
+        )
+    }
+
+    private func persistPendingOnboardingMemory(_ pending: PendingOnboardingMemory) {
+        guard let defaults = UserDefaults(suiteName: AppGroup.suiteName),
+              let data = try? JSONEncoder().encode(pending) else { return }
+        defaults.set(data, forKey: AppGroup.pendingOnboardingMemoryMetadataKey)
+    }
+
+    private func loadPendingOnboardingMemory() -> PendingOnboardingMemory? {
+        guard let defaults = UserDefaults(suiteName: AppGroup.suiteName),
+              let data = defaults.data(forKey: AppGroup.pendingOnboardingMemoryMetadataKey) else { return nil }
+        return try? JSONDecoder().decode(PendingOnboardingMemory.self, from: data)
+    }
+
+    private func loadPendingOnboardingImage(_ pending: PendingOnboardingMemory) -> UIImage? {
+        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) else {
+            return nil
+        }
+        let fileURL = container.appendingPathComponent(pending.imageFileName)
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        return UIImage(data: data)
+    }
+
+    private func clearPendingOnboardingMemory() {
+        if let defaults = UserDefaults(suiteName: AppGroup.suiteName) {
+            defaults.removeObject(forKey: AppGroup.pendingOnboardingMemoryMetadataKey)
+        }
+        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) {
+            let fileURL = container.appendingPathComponent(AppGroup.pendingOnboardingMemoryFileName)
+            try? FileManager.default.removeItem(at: fileURL)
         }
     }
 

@@ -54,6 +54,20 @@ final class AmbientDataManager: NSObject, CLLocationManagerDelegate {
         return Int((raw * 100).rounded(.toNearestOrAwayFromZero))
     }
 
+    /// Returns the user's coordinate for map centering, or a Bay Area fallback.
+    func mapCenterCoordinate() async -> CLLocationCoordinate2D {
+        let fallback = CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090)
+        guard authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse else {
+            return fallback
+        }
+        do {
+            let location = try await fetchCurrentLocation()
+            return location.coordinate
+        } catch {
+            return fallback
+        }
+    }
+
     func syncData() async throws {
         let battery = fetchCurrentBatteryLevel()
 

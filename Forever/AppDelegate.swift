@@ -13,6 +13,8 @@ enum AppGroup {
     static let pendingDeviceTokenKey = "pendingDeviceToken"
     static let myAvatarFileName = "my-avatar.jpg"
     static let partnerAvatarFileName = "partner-avatar.jpg"
+    static let pendingOnboardingMemoryFileName = "pending-onboarding-memory.jpg"
+    static let pendingOnboardingMemoryMetadataKey = "pendingOnboardingMemory"
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {

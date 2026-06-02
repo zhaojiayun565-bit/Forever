@@ -191,12 +191,18 @@ final class AppStateManager {
         persistPendingOnboardingMemory(pending)
     }
 
-    /// Uploads a staged onboarding memory after authentication.
-    func flushPendingOnboardingMemory() async {
-        guard let pending = loadPendingOnboardingMemory(), currentUser != nil else { return }
+    /// Whether a staged onboarding memory is waiting in the App Group.
+    var hasPendingOnboardingMemory: Bool {
+        loadPendingOnboardingMemory() != nil
+    }
+
+    /// Uploads a staged onboarding memory from App Group storage after authentication.
+    @discardableResult
+    func flushPendingOnboardingMemory() async -> Bool {
+        guard let pending = loadPendingOnboardingMemory(), currentUser != nil else { return false }
         guard let image = loadPendingOnboardingImage(pending) else {
             clearPendingOnboardingMemory()
-            return
+            return false
         }
 
         let coordinate = CLLocationCoordinate2D(latitude: pending.latitude, longitude: pending.longitude)
@@ -208,8 +214,34 @@ final class AppStateManager {
                 date: pending.createdAt
             )
             clearPendingOnboardingMemory()
+            return true
         } catch {
             print("🚨 Flush onboarding memory error: \(error)")
+            return false
+        }
+    }
+
+    /// Uploads an in-memory onboarding capture when App Group pending data is unavailable.
+    @discardableResult
+    func flushOnboardingMemory(
+        image: UIImage,
+        note: String,
+        coordinate: CLLocationCoordinate2D,
+        createdAt: Date = Date()
+    ) async -> Bool {
+        guard currentUser != nil else { return false }
+        do {
+            try await saveMemory(
+                images: [image],
+                note: note,
+                coordinate: coordinate,
+                date: createdAt
+            )
+            clearPendingOnboardingMemory()
+            return true
+        } catch {
+            print("🚨 Flush onboarding memory error: \(error)")
+            return false
         }
     }
 

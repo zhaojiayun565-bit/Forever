@@ -67,20 +67,11 @@ struct MapDashboardView: View {
                     }
                 }
 
-                Button {
+                MemoryMapFABButton(accent: .pink) {
                     showingAddMemory = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 64, height: 64)
-                        .background(Color.pink)
-                        .clipShape(Circle())
-                        .shadow(color: .pink.opacity(0.4), radius: 10, x: 0, y: 5)
                 }
                 .padding(.trailing, 24)
                 .padding(.bottom, 24)
-                .accessibilityLabel("Add memory")
             }
             .task {
                 await state.loadMemories()

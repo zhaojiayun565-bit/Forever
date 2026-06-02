@@ -7,6 +7,9 @@ struct AddMemoryView: View {
     @Environment(AppStateManager.self) private var state
     @Environment(\.dismiss) private var dismiss
 
+    var onboardingSaveAction: ((UIImage, String, CLLocationCoordinate2D) -> Void)?
+    var initialCoordinate: CLLocationCoordinate2D?
+
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedImages: [UIImage] = []
     @State private var date = Date()
@@ -138,6 +141,13 @@ struct AddMemoryView: View {
                 }
                 .presentationDetents([.medium])
             }
+            .task {
+                guard let initialCoordinate, coordinate == nil else { return }
+                coordinate = initialCoordinate
+                if let name = await GeocodingHelper.placeName(for: initialCoordinate) {
+                    locationName = name
+                }
+            }
         }
     }
 
@@ -152,6 +162,16 @@ struct AddMemoryView: View {
     }
 
     private func saveMemory() async {
+        if let onboardingSaveAction {
+            guard let image = selectedImages.first, let coordinate else {
+                errorMessage = "Please add a photo and choose a location."
+                return
+            }
+            onboardingSaveAction(image, note, coordinate)
+            dismiss()
+            return
+        }
+
         guard let lat = coordinate?.latitude, let lng = coordinate?.longitude else {
             errorMessage = "Please select a valid location."
             return

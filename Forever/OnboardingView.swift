@@ -1,8 +1,8 @@
 import SwiftUI
 import CoreLocation
 import MapKit
-import PhotosUI
 import StoreKit
+import UIKit
 import UserNotifications
 import AuthenticationServices
 
@@ -58,9 +58,9 @@ struct OnboardingView: View {
     @State private var currentStep: OnboardingStep = .welcome
     @State private var featureTab = 0
     @State private var selectedRelationshipGoals: [RelationshipGoal] = []
-    @State private var onboardingMemoryImage: UIImage?
-    @State private var onboardingMemoryNote = ""
-    @State private var onboardingMemoryCoordinate: CLLocationCoordinate2D?
+    @State private var showOnboardingAddMemory = false
+    @State private var localOnboardingMemory: (image: UIImage, note: String, coordinate: CLLocationCoordinate2D)?
+    @State private var onboardingMemoryStageError: String?
 
     private var isIntroPhase: Bool {
         currentStep.rawValue <= OnboardingStep.reviewAsk.rawValue
@@ -148,16 +148,17 @@ struct OnboardingView: View {
                     )
                     .transition(standardStepTransition)
                 case .firstMemory:
-                    IntroFirstMemoryView(
-                        note: $onboardingMemoryNote,
-                        selectedImage: $onboardingMemoryImage,
-                        mapCoordinate: $onboardingMemoryCoordinate,
-                        onSave: saveOnboardingMemoryAndAdvance
+                    IntroOnboardingMapStep(
+                        showAddMemory: $showOnboardingAddMemory,
+                        onMemorySaved: handleOnboardingMemorySaved
                     )
                     .transition(standardStepTransition)
                 case .memoryCelebration:
-                    IntroMemoryCelebrationView(action: advance)
-                        .transition(standardStepTransition)
+                    IntroMemoryCelebrationView(
+                        previewImage: localOnboardingMemory?.image,
+                        action: advance
+                    )
+                    .transition(standardStepTransition)
                 case .reviewAsk:
                     IntroReviewAskView(action: advance)
                         .transition(standardStepTransition)
@@ -174,8 +175,11 @@ struct OnboardingView: View {
                     FeatureCarouselView(tab: $featureTab, action: advance)
                         .transition(standardStepTransition)
                 case .login:
-                    OnboardingLoginView(action: advance)
-                        .transition(standardStepTransition)
+                    OnboardingLoginView(
+                        action: advance,
+                        onAuthenticated: syncOnboardingMemoryAfterAuth
+                    )
+                    .transition(standardStepTransition)
                 case .investment:
                     OnboardingInvestmentView(onContinue: advance)
                         .transition(standardStepTransition)
@@ -190,6 +194,17 @@ struct OnboardingView: View {
             }
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: currentStep)
+        .alert(
+            "Could Not Save Memory",
+            isPresented: Binding(
+                get: { onboardingMemoryStageError != nil },
+                set: { if !$0 { onboardingMemoryStageError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(onboardingMemoryStageError ?? "")
+        }
     }
 
     private func advance() {
@@ -200,17 +215,41 @@ struct OnboardingView: View {
         currentStep = next
     }
 
-    /// Stages the first memory locally, then advances to celebration.
-    private func saveOnboardingMemoryAndAdvance() async {
-        guard let image = onboardingMemoryImage else { return }
-        let coordinate = onboardingMemoryCoordinate ?? CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090)
+    /// Stages the first memory locally from AddMemoryView, then advances to celebration.
+    private func handleOnboardingMemorySaved(
+        image: UIImage,
+        note: String,
+        location: CLLocationCoordinate2D
+    ) {
         do {
-            try state.stageOnboardingMemory(image: image, note: onboardingMemoryNote, coordinate: coordinate)
-            await MainActor.run {
-                advance()
-            }
+            localOnboardingMemory = (image, note, location)
+            try state.stageOnboardingMemory(image: image, note: note, coordinate: location)
+            showOnboardingAddMemory = false
+            advance()
         } catch {
+            onboardingMemoryStageError = error.localizedDescription
             print("🚨 Stage onboarding memory error: \(error)")
+        }
+    }
+
+    /// Uploads the staged onboarding memory after Apple Sign-In, then clears local UI state.
+    private func syncOnboardingMemoryAfterAuth() async {
+        guard localOnboardingMemory != nil || state.hasPendingOnboardingMemory else { return }
+
+        var synced = await state.flushPendingOnboardingMemory()
+
+        if !synced, let local = localOnboardingMemory, state.currentUser != nil {
+            synced = await state.flushOnboardingMemory(
+                image: local.image,
+                note: local.note,
+                coordinate: local.coordinate
+            )
+        }
+
+        if synced {
+            await MainActor.run {
+                localOnboardingMemory = nil
+            }
         }
     }
 
@@ -224,7 +263,7 @@ struct OnboardingView: View {
 
             // Refresh state so SettingsView fetches the updated currentUser
             await state.initializeApp()
-            await state.flushPendingOnboardingMemory()
+            await syncOnboardingMemoryAfterAuth()
 
             await MainActor.run {
                 withAnimation(.easeInOut(duration: 0.5)) {
@@ -503,141 +542,61 @@ struct IntroRelationshipGoalsView: View {
     }
 }
 
-struct IntroFirstMemoryView: View {
-    @Binding var note: String
-    @Binding var selectedImage: UIImage?
-    @Binding var mapCoordinate: CLLocationCoordinate2D?
+struct IntroOnboardingMapStep: View {
+    @Environment(AppStateManager.self) private var state
+    @Binding var showAddMemory: Bool
+    let onMemorySaved: (UIImage, String, CLLocationCoordinate2D) -> Void
 
-    let onSave: () async -> Void
-
-    @State private var selectedItems: [PhotosPickerItem] = []
     @State private var mapPosition: MapCameraPosition = .automatic
-    @State private var pinVisible = false
-    @State private var isSaving = false
-
-    private var displayCoordinate: CLLocationCoordinate2D {
-        mapCoordinate ?? CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090)
-    }
+    @State private var mapCenterCoordinate = CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090)
 
     var body: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 0) {
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: OnboardingLayout.bodyStackSpacing) {
-                        Text("Let's capture your first memory.")
-                            .font(OnboardingLayout.titleFont)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Text("Upload a favorite photo and add a quick note. We'll drop it on the map to start your shared journey.")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.leading)
-
-                        PhotosPicker(selection: $selectedItems, maxSelectionCount: 1, matching: .images) {
-                            Group {
-                                if let selectedImage {
-                                    Image(uiImage: selectedImage)
-                                        .resizable()
-                                        .scaledToFill()
-                                } else {
-                                    VStack(spacing: 8) {
-                                        Image(systemName: "photo.on.rectangle.angled")
-                                            .font(.system(size: 28, weight: .semibold))
-                                        Text("Add Photo")
-                                            .font(.subheadline.weight(.semibold))
-                                    }
-                                    .foregroundStyle(OnboardingIntroTheme.accent)
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 120)
-                            .background(
-                                selectedImage == nil
-                                    ? OnboardingIntroTheme.accent.opacity(0.08)
-                                    : Color.clear
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .stroke(
-                                        selectedImage == nil ? OnboardingIntroTheme.accent.opacity(0.35) : Color.clear,
-                                        lineWidth: 2
-                                    )
-                            )
-                        }
-                        .buttonStyle(BubblyButtonStyle())
-                        .onChange(of: selectedItems) { _, items in
-                            Task { await loadPhoto(from: items.first) }
-                        }
-
-                        TextField("Our first trip to...", text: $note, axis: .vertical)
-                            .lineLimit(2 ... 4)
-                            .padding()
-                            .background(Color(UIColor.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
-                    .padding(.horizontal, OnboardingLayout.horizontalPadding)
-                    .padding(.bottom, 12)
+        ZStack(alignment: .bottomTrailing) {
+            Map(position: $mapPosition) {}
+                .mapStyle(.standard(elevation: .realistic))
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.black.opacity(0.06), lineWidth: 1)
                 }
-                .frame(height: geometry.size.height * 0.48)
 
-                ZStack(alignment: .bottom) {
-                    Map(position: $mapPosition) {
-                        if pinVisible {
-                            Annotation("", coordinate: displayCoordinate) {
-                                Group {
-                                    if let selectedImage {
-                                        Image(uiImage: selectedImage)
-                                            .resizable()
-                                            .scaledToFill()
-                                            .frame(width: 52, height: 52)
-                                            .clipShape(Circle())
-                                            .overlay(Circle().stroke(Color.white, lineWidth: 3))
-                                    } else {
-                                        Image(systemName: "mappin.circle.fill")
-                                            .font(.system(size: 44))
-                                            .foregroundStyle(OnboardingIntroTheme.accent)
-                                    }
-                                }
-                                .scaleEffect(pinVisible ? 1 : 0.2)
-                                .opacity(pinVisible ? 1 : 0)
-                                .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
-                            }
-                        }
-                    }
-                    .mapStyle(.standard(elevation: .realistic))
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .padding(.horizontal, OnboardingLayout.horizontalPadding)
-                    .allowsHitTesting(false)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Let's capture your first memory.")
+                    .font(OnboardingLayout.titleFont)
+                    .multilineTextAlignment(.leading)
 
-                    IntroPrimaryButton(
-                        title: "Save Memory",
-                        isEnabled: selectedImage != nil && !isSaving
-                    ) {
-                        Task {
-                            isSaving = true
-                            await onSave()
-                            isSaving = false
-                        }
-                    }
-                    .padding(.horizontal, OnboardingLayout.horizontalPadding)
-                    .padding(.bottom, 8)
-                }
-                .frame(height: geometry.size.height * 0.52)
+                Text("Upload a favorite photo and add a quick note. We'll drop it on the map to start your shared journey.")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+
+                Spacer()
             }
+            .padding(.horizontal, OnboardingLayout.horizontalPadding)
+            .padding(.top, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            VStack(spacing: 10) {
+                BouncingTooltip(accentColor: OnboardingIntroTheme.accent)
+                MemoryMapFABButton(accent: OnboardingIntroTheme.accent) {
+                    showAddMemory = true
+                }
+            }
+            .padding(.trailing, 24)
+            .padding(.bottom, 24)
         }
-        .overlay {
-            if isSaving {
-                ProgressView()
-                    .padding(20)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
+        .padding(.horizontal, OnboardingLayout.horizontalPadding)
+        .sheet(isPresented: $showAddMemory) {
+            AddMemoryView(
+                onboardingSaveAction: onMemorySaved,
+                initialCoordinate: mapCenterCoordinate
+            )
+            .environment(state)
         }
         .task {
             AmbientDataManager.shared.requestLocationAuthorizationFirst()
             let center = await AmbientDataManager.shared.mapCenterCoordinate()
-            mapCoordinate = center
+            mapCenterCoordinate = center
             mapPosition = .region(
                 MKCoordinateRegion(
                     center: center,
@@ -647,22 +606,11 @@ struct IntroFirstMemoryView: View {
             )
         }
     }
-
-    private func loadPhoto(from item: PhotosPickerItem?) async {
-        guard let item else { return }
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data) else { return }
-        await MainActor.run {
-            selectedImage = image
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) {
-                pinVisible = true
-            }
-        }
-    }
 }
 
 struct IntroMemoryCelebrationView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var previewImage: UIImage?
     let action: () -> Void
 
     @State private var showHeart = false
@@ -672,17 +620,30 @@ struct IntroMemoryCelebrationView: View {
         VStack(spacing: OnboardingLayout.bodyStackSpacing) {
             Spacer(minLength: 12)
 
-            Group {
-                if reduceMotion {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 88))
-                        .foregroundStyle(OnboardingIntroTheme.accent)
-                } else {
-                    Image(systemName: showHeart ? "heart.fill" : "map.fill")
-                        .font(.system(size: 88))
-                        .foregroundStyle(OnboardingIntroTheme.accent)
-                        .contentTransition(.symbolEffect(.replace))
-                        .symbolEffect(.bounce, value: animateHero)
+            ZStack {
+                Group {
+                    if reduceMotion {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 88))
+                            .foregroundStyle(OnboardingIntroTheme.accent)
+                    } else {
+                        Image(systemName: showHeart ? "heart.fill" : "map.fill")
+                            .font(.system(size: 88))
+                            .foregroundStyle(OnboardingIntroTheme.accent)
+                            .contentTransition(.symbolEffect(.replace))
+                            .symbolEffect(.bounce, value: animateHero)
+                    }
+                }
+
+                if let previewImage {
+                    Image(uiImage: previewImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 48, height: 48)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.white, lineWidth: 3))
+                        .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
+                        .offset(y: 4)
                 }
             }
             .padding(.bottom, 8)
@@ -978,6 +939,7 @@ struct OnboardingPaywallStep: View {
 
 struct OnboardingLoginView: View {
     let action: () -> Void
+    var onAuthenticated: (() async -> Void)?
     @Environment(AppStateManager.self) private var state
     @Environment(\.colorScheme) private var colorScheme
     
@@ -1034,7 +996,7 @@ struct OnboardingLoginView: View {
             // If they close the app and reopen it, skip this step if they are already logged in!
             if state.currentUser != nil {
                 Task {
-                    await state.flushPendingOnboardingMemory()
+                    await onAuthenticated?()
                     action()
                 }
             }
@@ -1062,7 +1024,7 @@ struct OnboardingLoginView: View {
                     do {
                         try await SupabaseManager.shared.signInWithApple(idToken: idTokenString, nonce: nonce)
                         await state.initializeApp()
-                        await state.flushPendingOnboardingMemory()
+                        await onAuthenticated?()
 
                         // Successfully logged in! Smoothly advance to the paywall.
                         DispatchQueue.main.async {

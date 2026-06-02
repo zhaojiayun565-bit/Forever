@@ -108,6 +108,80 @@ struct EditModeRemoveBadge: View {
     }
 }
 
+/// Downward-pointing triangle for tooltip tails.
+private struct TooltipTriangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// Bouncing callout used above the map FAB during onboarding.
+struct BouncingTooltip: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var text: String = "Tap here to drop your first memory!"
+    var accentColor: Color = Color(red: 1.0, green: 45.0 / 255.0, blue: 85.0 / 255.0)
+
+    @State private var bounce = false
+
+    private var bubbleFill: Color {
+        colorScheme == .dark
+            ? Color(UIColor.secondarySystemGroupedBackground)
+            : Color(red: 250.0 / 255.0, green: 250.0 / 255.0, blue: 250.0 / 255.0)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(text)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(accentColor)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(bubbleFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
+
+            TooltipTriangle()
+                .fill(bubbleFill)
+                .frame(width: 18, height: 10)
+                .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+        }
+        .offset(y: reduceMotion ? 0 : (bounce ? -6 : 6))
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                bounce = true
+            }
+        }
+    }
+}
+
+/// Circular add-memory button used on the map tab and onboarding map step.
+struct MemoryMapFABButton: View {
+    var accent: Color = .pink
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "plus")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 64, height: 64)
+                .background(accent)
+                .clipShape(Circle())
+                .shadow(color: accent.opacity(0.4), radius: 10, x: 0, y: 5)
+        }
+        .buttonStyle(BubblyButtonStyle())
+        .accessibilityLabel("Add memory")
+    }
+}
+
 /// Page dots with explicit spacing for use below a paged image carousel.
 struct MemoryPageIndicator: View {
     let count: Int

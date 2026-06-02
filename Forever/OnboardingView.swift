@@ -7,17 +7,28 @@ import UserNotifications
 import AuthenticationServices
 
 enum OnboardingStep: Int, CaseIterable {
-    case welcome, problem, solution, anniversary, anniversaryInsight, relationshipGoals, reflection
-    case firstMemory, memoryCelebration, reviewAsk
-    case myName, partnerName, intent, features, login, investment, paywall
+    case welcome, problem, solution
+    case myName, partnerName
+    case anniversary, anniversaryInsight, relationshipGoals, reflection
+    case features
+    case firstMemorySetup, firstMemoryMap, memoryCelebration, reviewAsk
+    case journeySummary, upfrontInvestment, commitment, commitmentEncouragement
+    case intent, login, investment, paywall
+
+    /// Steps that count toward the onboarding progress bar (paywall excluded).
+    static var progressTrackedSteps: [OnboardingStep] {
+        allCases.filter { $0 != .paywall }
+    }
+
+    static var progressStepCount: Int { progressTrackedSteps.count }
 }
 
-private enum OnboardingIntroTheme {
+enum OnboardingIntroTheme {
     static let background = Color(red: 250.0 / 255.0, green: 250.0 / 255.0, blue: 250.0 / 255.0)
     static let accent = Color(red: 1.0, green: 45.0 / 255.0, blue: 85.0 / 255.0)
 }
 
-private enum OnboardingLayout {
+enum OnboardingLayout {
     static let horizontalPadding: CGFloat = 40
     static let titleFont = Font.system(size: 36, weight: .bold, design: .rounded)
     static let bodyStackSpacing: CGFloat = 30
@@ -63,7 +74,14 @@ struct OnboardingView: View {
     @State private var onboardingMemoryStageError: String?
 
     private var isIntroPhase: Bool {
-        currentStep.rawValue <= OnboardingStep.reviewAsk.rawValue
+        currentStep.rawValue <= OnboardingStep.commitmentEncouragement.rawValue
+    }
+
+    private var onboardingProgressValue: Double {
+        guard let index = OnboardingStep.progressTrackedSteps.firstIndex(of: currentStep) else {
+            return Double(OnboardingStep.progressStepCount)
+        }
+        return Double(index + 1)
     }
 
     private var standardStepTransition: AnyTransition {
@@ -91,15 +109,17 @@ struct OnboardingView: View {
             }
 
             VStack {
-                ProgressView(
-                    value: Double(currentStep.rawValue + 1),
-                    total: Double(OnboardingStep.allCases.count)
-                )
-                .progressViewStyle(.linear)
-                .tint(isIntroPhase ? OnboardingIntroTheme.accent : .pink)
-                .padding(.horizontal, OnboardingLayout.horizontalPadding)
-                .padding(.top, 20)
-                .padding(.bottom, 40)
+                if currentStep != .paywall {
+                    ProgressView(
+                        value: onboardingProgressValue,
+                        total: Double(OnboardingStep.progressStepCount)
+                    )
+                    .progressViewStyle(.linear)
+                    .tint(isIntroPhase ? OnboardingIntroTheme.accent : .pink)
+                    .padding(.horizontal, OnboardingLayout.horizontalPadding)
+                    .padding(.top, 20)
+                    .padding(.bottom, 40)
+                }
 
                 // View Router
                 switch currentStep {
@@ -120,6 +140,12 @@ struct OnboardingView: View {
                         action: advance
                     )
                     .transition(standardStepTransition)
+                case .myName:
+                    IntroNameInputView(title: "What's your name?", name: $myName, action: advance)
+                        .transition(standardStepTransition)
+                case .partnerName:
+                    IntroNameInputView(title: "What's your partner's name?", name: $partnerName, action: advance)
+                        .transition(standardStepTransition)
                 case .anniversary:
                     IntroAnniversaryPickerView(
                         anniversary: Binding(
@@ -131,6 +157,8 @@ struct OnboardingView: View {
                     .transition(standardStepTransition)
                 case .anniversaryInsight:
                     IntroAnniversaryInsightView(
+                        myName: myName,
+                        partnerName: partnerName,
                         anniversary: Date(timeIntervalSince1970: anniversary),
                         action: advance
                     )
@@ -147,32 +175,53 @@ struct OnboardingView: View {
                         action: advance
                     )
                     .transition(standardStepTransition)
-                case .firstMemory:
+                case .features:
+                    IntroFeaturePreviewView(tab: $featureTab, action: advance)
+                        .transition(standardStepTransition)
+                case .firstMemorySetup:
+                    IntroPromptStepView(
+                        title: "Let's capture your first memory.",
+                        subtitle: "Upload a favorite photo and add a quick note. We'll drop it on the map to start your shared journey.",
+                        cta: "Ready",
+                        action: advance
+                    )
+                    .transition(standardStepTransition)
+                case .firstMemoryMap:
                     IntroOnboardingMapStep(
                         showAddMemory: $showOnboardingAddMemory,
-                        onMemorySaved: handleOnboardingMemorySaved
+                        localMemory: $localOnboardingMemory,
+                        onMemoryStaged: stageOnboardingMemoryFromSheet,
+                        onContinue: advance
                     )
                     .transition(standardStepTransition)
                 case .memoryCelebration:
                     IntroMemoryCelebrationView(
-                        previewImage: localOnboardingMemory?.image,
+                        image: localOnboardingMemory?.image,
+                        note: localOnboardingMemory?.note,
+                        coordinate: localOnboardingMemory?.coordinate,
                         action: advance
                     )
                     .transition(standardStepTransition)
                 case .reviewAsk:
                     IntroReviewAskView(action: advance)
                         .transition(standardStepTransition)
-                case .myName:
-                    NameInputView(title: "What's your name?", name: $myName, action: advance)
+                case .journeySummary:
+                    IntroJourneySummaryView(action: advance)
                         .transition(standardStepTransition)
-                case .partnerName:
-                    NameInputView(title: "What's your partner's name?", name: $partnerName, action: advance)
+                case .upfrontInvestment:
+                    IntroUpfrontInvestmentView(action: advance)
+                        .transition(standardStepTransition)
+                case .commitment:
+                    IntroCommitmentView(
+                        onHighCommitment: goToPaywall,
+                        onLowerCommitment: goToCommitmentEncouragement
+                    )
+                    .transition(standardStepTransition)
+                case .commitmentEncouragement:
+                    IntroCommitmentEncouragementView(action: goToPaywall)
                         .transition(standardStepTransition)
                 case .intent:
                     IntentSelectionView(action: advance)
-                        .transition(standardStepTransition)
-                case .features:
-                    FeatureCarouselView(tab: $featureTab, action: advance)
                         .transition(standardStepTransition)
                 case .login:
                     OnboardingLoginView(
@@ -194,6 +243,11 @@ struct OnboardingView: View {
             }
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: currentStep)
+        .onChange(of: currentStep) { _, step in
+            if step == .features {
+                featureTab = 0
+            }
+        }
         .alert(
             "Could Not Save Memory",
             isPresented: Binding(
@@ -208,15 +262,36 @@ struct OnboardingView: View {
     }
 
     private func advance() {
-        // Explicitly dismiss the keyboard to ensure smooth transitions to non-text screens
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        
+        resignFirstResponder()
         guard let next = OnboardingStep(rawValue: currentStep.rawValue + 1) else { return }
         currentStep = next
     }
 
-    /// Stages the first memory locally from AddMemoryView, then advances to celebration.
-    private func handleOnboardingMemorySaved(
+    private func resignFirstResponder() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+    }
+
+    private func goToPaywall() {
+        resignFirstResponder()
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+            currentStep = .paywall
+        }
+    }
+
+    private func goToCommitmentEncouragement() {
+        resignFirstResponder()
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+            currentStep = .commitmentEncouragement
+        }
+    }
+
+    /// Stages the first memory locally from AddMemoryView; map step stays until Continue.
+    private func stageOnboardingMemoryFromSheet(
         image: UIImage,
         note: String,
         location: CLLocationCoordinate2D
@@ -225,7 +300,6 @@ struct OnboardingView: View {
             localOnboardingMemory = (image, note, location)
             try state.stageOnboardingMemory(image: image, note: note, coordinate: location)
             showOnboardingAddMemory = false
-            advance()
         } catch {
             onboardingMemoryStageError = error.localizedDescription
             print("🚨 Stage onboarding memory error: \(error)")
@@ -338,6 +412,7 @@ struct IntroWelcomeView: View {
 
 struct IntroPromptStepView: View {
     let title: String
+    var subtitle: String? = nil
     let cta: String
     let action: () -> Void
 
@@ -348,6 +423,14 @@ struct IntroPromptStepView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.primary)
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
+
+            if let subtitle {
+                Text(subtitle)
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, OnboardingLayout.horizontalPadding)
+            }
 
             Spacer()
 
@@ -405,6 +488,51 @@ struct NameInputView: View {
     }
 }
 
+/// Name entry styled for the intro onboarding phase.
+struct IntroNameInputView: View {
+    let title: String
+    @Binding var name: String
+    let action: () -> Void
+
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        VStack(spacing: OnboardingLayout.bodyStackSpacing) {
+            Text(title)
+                .font(OnboardingLayout.titleFont)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, OnboardingLayout.horizontalPadding)
+
+            TextField("First Name", text: $name)
+                .font(.title2)
+                .multilineTextAlignment(.center)
+                .padding()
+                .background(Color.white.opacity(0.95))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                )
+                .padding(.horizontal, OnboardingLayout.horizontalPadding)
+                .focused($isFocused)
+                .submitLabel(.continue)
+                .onSubmit {
+                    if !name.isEmpty { action() }
+                }
+
+            Spacer()
+
+            IntroPrimaryButton(title: "Continue", isEnabled: !name.isEmpty, action: action)
+                .padding(.horizontal, OnboardingLayout.horizontalPadding)
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                isFocused = true
+            }
+        }
+    }
+}
+
 struct IntroAnniversaryPickerView: View {
     @Binding var anniversary: Date
     let action: () -> Void
@@ -431,6 +559,8 @@ struct IntroAnniversaryPickerView: View {
 }
 
 struct IntroAnniversaryInsightView: View {
+    let myName: String
+    let partnerName: String
     let anniversary: Date
     let action: () -> Void
 
@@ -438,17 +568,36 @@ struct IntroAnniversaryInsightView: View {
         max(0, Calendar.current.dateComponents([.day], from: anniversary, to: Date()).day ?? 0)
     }
 
-    private var insightText: String {
-        "You've been making memories for \(daysTogether) days. Let's make sure you never forget the next ones. Do you have just 5 minutes a day to stay connected?"
+    private var displayMyName: String {
+        let trimmed = myName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "You" }
+        return trimmed.prefix(1).uppercased() + trimmed.dropFirst()
+    }
+
+    private var displayPartnerName: String {
+        let trimmed = partnerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "your partner" }
+        return trimmed.prefix(1).uppercased() + trimmed.dropFirst()
+    }
+
+    private var headerText: String {
+        "\(displayMyName), you've been making memories with \(displayPartnerName) for \(daysTogether) days. Let's make sure you never forget the next ones."
     }
 
     var body: some View {
         VStack(spacing: OnboardingLayout.bodyStackSpacing) {
-            Text(insightText)
-                .font(.title3.weight(.medium))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, OnboardingLayout.horizontalPadding)
+            VStack(spacing: 12) {
+                Text(headerText)
+                    .font(OnboardingLayout.titleFont)
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+
+                Text("Do you have just 5 minutes a day to stay connected?")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, OnboardingLayout.horizontalPadding)
 
             Spacer()
 
@@ -484,33 +633,9 @@ struct IntroRelationshipGoalsView: View {
                         Button {
                             toggle(goal)
                         } label: {
-                            HStack(spacing: 12) {
-                                Text(goal.text)
-                                    .font(.headline)
-                                    .foregroundStyle(.primary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                                if isSelected {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(OnboardingIntroTheme.accent)
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 18)
-                            .background(
-                                RoundedRectangle(cornerRadius: OnboardingLayout.selectionCornerRadius, style: .continuous)
-                                    .fill(
-                                        isSelected
-                                            ? OnboardingIntroTheme.accent.opacity(0.1)
-                                            : Color.white.opacity(0.95)
-                                    )
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OnboardingLayout.selectionCornerRadius, style: .continuous)
-                                    .stroke(
-                                        isSelected ? OnboardingIntroTheme.accent : Color.clear,
-                                        lineWidth: 2
-                                    )
+                            IntroSelectableOptionRow(
+                                title: goal.text,
+                                isSelected: isSelected
                             )
                             .opacity(isDisabled ? 0.45 : 1)
                         }
@@ -545,50 +670,55 @@ struct IntroRelationshipGoalsView: View {
 struct IntroOnboardingMapStep: View {
     @Environment(AppStateManager.self) private var state
     @Binding var showAddMemory: Bool
-    let onMemorySaved: (UIImage, String, CLLocationCoordinate2D) -> Void
+    @Binding var localMemory: (image: UIImage, note: String, coordinate: CLLocationCoordinate2D)?
+    let onMemoryStaged: (UIImage, String, CLLocationCoordinate2D) -> Void
+    let onContinue: () -> Void
 
     @State private var mapPosition: MapCameraPosition = .automatic
     @State private var mapCenterCoordinate = CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090)
 
+    private var mapCard: some View {
+        Map(position: $mapPosition) {
+            if let memory = localMemory {
+                Annotation("", coordinate: memory.coordinate) {
+                    MemoryMapPinLabel(image: memory.image, note: memory.note)
+                }
+            }
+        }
+        .mapStyle(.standard(elevation: .realistic))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+        }
+    }
+
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Map(position: $mapPosition) {}
-                .mapStyle(.standard(elevation: .realistic))
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(Color.black.opacity(0.06), lineWidth: 1)
-                }
+        VStack(spacing: 16) {
+            ZStack(alignment: .bottomTrailing) {
+                mapCard
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Let's capture your first memory.")
-                    .font(OnboardingLayout.titleFont)
-                    .multilineTextAlignment(.leading)
-
-                Text("Upload a favorite photo and add a quick note. We'll drop it on the map to start your shared journey.")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.leading)
-
-                Spacer()
-            }
-            .padding(.horizontal, OnboardingLayout.horizontalPadding)
-            .padding(.top, 8)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-            VStack(spacing: 10) {
-                BouncingTooltip(accentColor: OnboardingIntroTheme.accent)
-                MemoryMapFABButton(accent: OnboardingIntroTheme.accent) {
-                    showAddMemory = true
+                if localMemory == nil {
+                    VStack(spacing: 10) {
+                        BouncingTooltip(accentColor: OnboardingIntroTheme.accent)
+                        MemoryMapFABButton(accent: OnboardingIntroTheme.accent) {
+                            showAddMemory = true
+                        }
+                    }
+                    .padding(.trailing, 24)
+                    .padding(.bottom, 24)
                 }
             }
-            .padding(.trailing, 24)
-            .padding(.bottom, 24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if localMemory != nil {
+                IntroPrimaryButton(title: "Continue", action: onContinue)
+            }
         }
         .padding(.horizontal, OnboardingLayout.horizontalPadding)
         .sheet(isPresented: $showAddMemory) {
             AddMemoryView(
-                onboardingSaveAction: onMemorySaved,
+                onboardingSaveAction: onMemoryStaged,
                 initialCoordinate: mapCenterCoordinate
             )
             .environment(state)
@@ -605,50 +735,79 @@ struct IntroOnboardingMapStep: View {
                 )
             )
         }
+        .onChange(of: showAddMemory) { wasShowing, isShowing in
+            guard wasShowing, !isShowing, let coordinate = localMemory?.coordinate else { return }
+            focusMap(on: coordinate)
+        }
+    }
+
+    /// Animates the map camera to the staged memory coordinate.
+    private func focusMap(on coordinate: CLLocationCoordinate2D) {
+        withAnimation(.easeInOut(duration: 1.2)) {
+            mapPosition = .region(
+                MKCoordinateRegion(
+                    center: coordinate,
+                    latitudinalMeters: 5_000,
+                    longitudinalMeters: 5_000
+                )
+            )
+        }
+    }
+}
+
+/// Non-interactive mini-map preview for the celebration step.
+private struct IntroMemoryMapPreviewCard: View {
+    let image: UIImage
+    let note: String
+    let coordinate: CLLocationCoordinate2D
+
+    @State private var mapPosition: MapCameraPosition = .automatic
+
+    private let cardWidth: CGFloat = 180
+    private let cardHeight: CGFloat = 140
+
+    var body: some View {
+        Map(position: $mapPosition) {
+            Annotation("", coordinate: coordinate) {
+                MemoryMapPinLabel(image: image, note: note)
+            }
+        }
+        .mapStyle(.standard(elevation: .realistic))
+        .frame(width: cardWidth, height: cardHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .allowsHitTesting(false)
+        .mapControlVisibility(.hidden)
+        .onAppear {
+            mapPosition = .region(
+                MKCoordinateRegion(
+                    center: coordinate,
+                    latitudinalMeters: 5_000,
+                    longitudinalMeters: 5_000
+                )
+            )
+        }
     }
 }
 
 struct IntroMemoryCelebrationView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    var previewImage: UIImage?
+    var image: UIImage?
+    var note: String?
+    var coordinate: CLLocationCoordinate2D?
     let action: () -> Void
 
-    @State private var showHeart = false
-    @State private var animateHero = false
+    @State private var cardVisible = false
 
     var body: some View {
         VStack(spacing: OnboardingLayout.bodyStackSpacing) {
             Spacer(minLength: 12)
 
-            ZStack {
-                Group {
-                    if reduceMotion {
-                        Image(systemName: "heart.fill")
-                            .font(.system(size: 88))
-                            .foregroundStyle(OnboardingIntroTheme.accent)
-                    } else {
-                        Image(systemName: showHeart ? "heart.fill" : "map.fill")
-                            .font(.system(size: 88))
-                            .foregroundStyle(OnboardingIntroTheme.accent)
-                            .contentTransition(.symbolEffect(.replace))
-                            .symbolEffect(.bounce, value: animateHero)
-                    }
-                }
+            mapPreviewCard
+                .scaleEffect(cardVisible ? 1 : 0.92)
+                .opacity(cardVisible ? 1 : 0)
+                .padding(.bottom, 8)
 
-                if let previewImage {
-                    Image(uiImage: previewImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.white, lineWidth: 3))
-                        .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
-                        .offset(y: 4)
-                }
-            }
-            .padding(.bottom, 8)
-
-            Text("First memory secured! 🔥")
+            Text("First memory secured!")
                 .font(OnboardingLayout.titleFont)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
@@ -665,14 +824,40 @@ struct IntroMemoryCelebrationView: View {
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
         }
         .onAppear {
-            guard !reduceMotion else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                withAnimation(.easeInOut(duration: 0.35)) {
-                    showHeart = true
+            if reduceMotion {
+                cardVisible = true
+            } else {
+                withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
+                    cardVisible = true
                 }
-                animateHero = true
             }
         }
+    }
+
+    @ViewBuilder
+    private var mapPreviewCard: some View {
+        Group {
+            if let image, let coordinate {
+                IntroMemoryMapPreviewCard(
+                    image: image,
+                    note: note ?? "",
+                    coordinate: coordinate
+                )
+            } else {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.secondary.opacity(0.15))
+                    .frame(width: 180, height: 140)
+                    .overlay {
+                        Image(systemName: "map")
+                            .font(.title)
+                            .foregroundStyle(.secondary)
+                    }
+            }
+        }
+        .padding(8)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 6)
     }
 }
 
@@ -819,56 +1004,35 @@ struct IntentSelectionView: View {
     }
 }
 
-struct FeatureCarouselView: View {
+/// Intro-phase preview of Live Distance and Handwritten Notes (no permission prompts).
+struct IntroFeaturePreviewView: View {
     @Binding var tab: Int
     let action: () -> Void
 
     var body: some View {
-        VStack {
-            TabView(selection: $tab) {
-                // Feature 1: Map
-                FeaturePage(
-                    icon: "map.fill",
-                    title: "Memories Map",
-                    description: "Drop photos on an interactive map and build a timeline of your relationship.",
-                    buttonTitle: "Next",
-                    buttonAction: { withAnimation { tab = 1 } }
-                ).tag(0)
+        TabView(selection: $tab) {
+            FeaturePage(
+                icon: "location.fill",
+                title: "Live Distance",
+                description: "See exactly how far apart you are directly on your Lock Screen.",
+                buttonTitle: "Next",
+                usesIntroStyle: true,
+                buttonAction: { withAnimation { tab = 1 } }
+            )
+            .tag(0)
 
-                // Feature 2: Location Widget
-                FeaturePage(
-                    icon: "location.fill",
-                    title: "Live Distance",
-                    description: "See exactly how far apart you are directly on your Lock Screen.",
-                    buttonTitle: "Enable Location",
-                    buttonAction: {
-                        AmbientDataManager.shared.requestLocationAuthorizationFirst()
-
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            withAnimation { tab = 2 }
-                        }
-                    }
-                ).tag(1)
-
-                // Feature 3: Drawing Widget
-                FeaturePage(
-                    icon: "applepencil",
-                    title: "Handwritten Notes",
-                    description: "Draw notes that instantly appear on your partner's home screen.",
-                    buttonTitle: "Enable Notifications",
-                    buttonAction: {
-                        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-                            DispatchQueue.main.async {
-                                if granted { UIApplication.shared.registerForRemoteNotifications() }
-                                action()
-                            }
-                        }
-                    }
-                ).tag(2)
-            }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .indexViewStyle(.page(backgroundDisplayMode: .always))
+            FeaturePage(
+                icon: "applepencil",
+                title: "Handwritten Notes",
+                description: "Draw notes that instantly appear on your partner's home screen.",
+                buttonTitle: "Continue",
+                usesIntroStyle: true,
+                buttonAction: action
+            )
+            .tag(1)
         }
+        .tabViewStyle(.page(indexDisplayMode: .always))
+        .indexViewStyle(.page(backgroundDisplayMode: .always))
     }
 }
 
@@ -877,6 +1041,7 @@ struct FeaturePage: View {
     let title: String
     let description: String
     let buttonTitle: String
+    var usesIntroStyle: Bool = false
     let buttonAction: () -> Void
 
     var body: some View {
@@ -886,54 +1051,60 @@ struct FeaturePage: View {
             Image(systemName: icon)
                 .font(.system(size: 100))
                 .foregroundStyle(
-                    LinearGradient(colors: [.pink, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    LinearGradient(
+                        colors: usesIntroStyle
+                            ? [OnboardingIntroTheme.accent, OnboardingIntroTheme.accent.opacity(0.7)]
+                            : [.pink, .purple],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 )
                 .padding(.bottom, 20)
 
             Text(title)
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(usesIntroStyle ? OnboardingLayout.titleFont : .system(size: 32, weight: .bold, design: .rounded))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, usesIntroStyle ? OnboardingLayout.horizontalPadding : 0)
 
             Text(description)
                 .font(.title3)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
+                .padding(.horizontal, OnboardingLayout.horizontalPadding)
 
             Spacer()
 
-            Button(action: buttonAction) {
-                Text(buttonTitle)
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.pink)
-                    .cornerRadius(16)
+            Group {
+                if usesIntroStyle {
+                    IntroPrimaryButton(title: buttonTitle, action: buttonAction)
+                        .padding(.horizontal, OnboardingLayout.horizontalPadding)
+                } else {
+                    Button(action: buttonAction) {
+                        Text(buttonTitle)
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.pink)
+                            .cornerRadius(16)
+                    }
+                    .padding(.horizontal, 40)
+                }
             }
-            .padding(.horizontal, 40)
             .padding(.bottom, 60)
         }
     }
 }
 
-/// Onboarding paywall: RevenueCat UI with skip path for free tier.
+/// Onboarding paywall: custom 3-step flow with skip path for free tier.
 struct OnboardingPaywallStep: View {
     let onContinue: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            ForeverPaywallView(
-                onCompleted: onContinue,
-                onDismiss: onContinue
-            )
-
-            Button("Continue without Pro") {
-                onContinue()
-            }
-            .font(.footnote.weight(.medium))
-            .foregroundStyle(.secondary)
-            .padding(.vertical, 12)
-        }
+        ForeverCustomPaywallFlow(
+            onCompleted: onContinue,
+            onSkip: onContinue
+        )
     }
 }
 

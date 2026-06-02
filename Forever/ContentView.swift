@@ -78,10 +78,8 @@ struct ContentView: View {
         }
     }
 
-    /// Re-registers for remote notifications on launch when the user already granted permission.
+    /// Re-registers for remote notifications on launch when the user granted full or provisional permission.
     private func registerForPushIfAuthorized() async {
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        guard settings.authorizationStatus == .authorized else { return }
-        UIApplication.shared.registerForRemoteNotifications()
+        await NotificationAuthorizationManager.registerForRemoteIfEligible()
     }
 }

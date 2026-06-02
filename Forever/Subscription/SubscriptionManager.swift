@@ -124,9 +124,29 @@ final class SubscriptionManager {
         }
     }
 
-    /// Package for a product id in the current offering, if present.
+    /// Package for a product or package identifier in the current offering.
     func package(for productID: String) -> Package? {
-        currentOffering?.availablePackages.first { $0.storeProduct.productIdentifier == productID }
+        currentOffering?.availablePackages.first {
+            $0.identifier == productID || $0.storeProduct.productIdentifier == productID
+        }
+    }
+
+    var monthlyPackage: Package? {
+        package(for: RevenueCatConfiguration.ProductID.monthly) ?? currentOffering?.monthly
+    }
+
+    var yearlyPackage: Package? {
+        package(for: RevenueCatConfiguration.ProductID.yearly) ?? currentOffering?.annual
+    }
+
+    /// Best package for the hard paywall (yearly trial preferred).
+    var preferredTrialPackage: Package? {
+        yearlyPackage ?? currentOffering?.availablePackages.first
+    }
+
+    /// Clears the last surfaced error (e.g. after user dismisses banner).
+    func clearLastError() {
+        lastErrorMessage = nil
     }
 }
 

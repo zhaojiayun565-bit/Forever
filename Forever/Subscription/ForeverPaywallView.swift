@@ -2,39 +2,17 @@ import RevenueCat
 import RevenueCatUI
 import SwiftUI
 
-/// RevenueCat-hosted paywall with purchase / restore callbacks.
+/// Presents the custom 3-step Forever paywall.
 struct ForeverPaywallView: View {
-    @Environment(SubscriptionManager.self) private var subscription
     var offering: Offering?
     var onCompleted: (() -> Void)?
     var onDismiss: (() -> Void)?
 
     var body: some View {
-        Group {
-            if let offering = offering ?? subscription.currentOffering {
-                paywallBody(offering: offering)
-            } else {
-                ProgressView("Loading plans…")
-                    .task { await subscription.refresh() }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func paywallBody(offering: Offering) -> some View {
-        let paywall = PaywallView(offering: offering)
-            .onPurchaseCompleted { _ in onCompleted?() }
-            .onRestoreCompleted { info in
-                if info.entitlements[RevenueCatConfiguration.proEntitlementID]?.isActive == true {
-                    onCompleted?()
-                }
-            }
-
-        if let onDismiss {
-            paywall.onRequestedDismissal { onDismiss() }
-        } else {
-            paywall
-        }
+        ForeverCustomPaywallFlow(
+            onCompleted: { onCompleted?() },
+            onSkip: onDismiss
+        )
     }
 }
 
@@ -58,7 +36,7 @@ struct ForeverPaywallGateModifier: ViewModifier {
 }
 
 extension View {
-    /// Shows a RevenueCat paywall sheet when `isPresented` is true.
+    /// Shows a paywall sheet when `isPresented` is true.
     func foreverPaywall(
         isPresented: Binding<Bool>,
         onPurchaseCompleted: (() -> Void)? = nil
@@ -66,7 +44,7 @@ extension View {
         modifier(ForeverPaywallGateModifier(isPresented: isPresented, onPurchaseCompleted: onPurchaseCompleted))
     }
 
-    /// Presents RevenueCat paywall automatically when Pro is not active.
+    /// Presents paywall automatically when Pro is not active (RevenueCat helper).
     func presentForeverPaywallIfNeeded(
         onPurchaseCompleted: (() -> Void)? = nil
     ) -> some View {

@@ -1,4 +1,6 @@
+import Kingfisher
 import SwiftUI
+import UIKit
 
 struct BubblyCard<Content: View>: View {
     let content: Content
@@ -159,6 +161,74 @@ struct BouncingTooltip: View {
                 bounce = true
             }
         }
+    }
+}
+
+/// Map annotation label: circular photo thumbnail and optional note capsule.
+struct MemoryMapPinLabel: View {
+    var image: UIImage?
+    var imageURL: URL?
+    let note: String?
+
+    init(image: UIImage, note: String?) {
+        self.image = image
+        self.imageURL = nil
+        self.note = note
+    }
+
+    init(imageURL: URL?, note: String?) {
+        self.image = nil
+        self.imageURL = imageURL
+        self.note = note
+    }
+
+    private var displayNote: String? {
+        guard let note else { return nil }
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            thumbnail
+
+            if let displayNote {
+                Text(displayNote)
+                    .font(.system(.caption, design: .rounded).weight(.bold))
+                    .lineLimit(1)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                    .frame(maxWidth: 140, alignment: .leading)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var thumbnail: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else if let imageURL {
+                KFImage.url(imageURL)
+                    .placeholder { Color.pink.opacity(0.3) }
+                    .setProcessor(DownsamplingImageProcessor(size: CGSize(width: 100, height: 100)))
+                    .scaleFactor(UIScreen.main.scale)
+                    .cacheOriginalImage()
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Color.pink.opacity(0.3)
+            }
+        }
+        .frame(width: 56, height: 56)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Color.white, lineWidth: 3.5))
+        .shadow(color: .black.opacity(0.3), radius: 6, x: 0, y: 3)
     }
 }
 

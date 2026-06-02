@@ -21,4 +21,10 @@ enum RevenueCatConfiguration {
 
     /// Default offering identifier in RevenueCat (optional; `nil` uses the current offering).
     static let defaultOfferingID: String? = nil
+
+    /// Terms of Service URL for paywall footer (set when available).
+    static var termsURL: URL? = nil
+
+    /// Privacy policy URL for paywall footer (set when available).
+    static var privacyURL: URL? = nil
 }

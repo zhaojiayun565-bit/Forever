@@ -1,4 +1,3 @@
-import Kingfisher
 import MapKit
 import SwiftUI
 import UIKit
@@ -15,35 +14,11 @@ struct MapDashboardView: View {
                 Map(position: $position) {
                     ForEach(state.memories) { memory in
                         Annotation("", coordinate: memory.coordinate) {
-                            HStack(spacing: 8) {
-                                KFImage.url(memory.imageUrls.first)
-                                    .placeholder { Color.pink.opacity(0.3) }
-                                    .setProcessor(DownsamplingImageProcessor(size: CGSize(width: 100, height: 100)))
-                                    .scaleFactor(UIScreen.main.scale)
-                                    .cacheOriginalImage()
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                .frame(width: 56, height: 56)
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white, lineWidth: 3.5))
-                                .shadow(color: .black.opacity(0.3), radius: 6, x: 0, y: 3)
-
-                                if let note = memory.note, !note.isEmpty {
-                                    Text(note)
-                                        .font(.system(.caption, design: .rounded).weight(.bold))
-                                        .lineLimit(1)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .background(.ultraThinMaterial)
-                                        .clipShape(Capsule())
-                                        .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
-                                        .frame(maxWidth: 140, alignment: .leading)
+                            MemoryMapPinLabel(imageURL: memory.imageUrls.first, note: memory.note)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    selectedMemory = memory
                                 }
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                selectedMemory = memory
-                            }
                         }
                     }
                 }

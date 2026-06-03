@@ -66,14 +66,15 @@ final class AppStateManager {
                 if currentCouple != nil {
                     // Paired: upload our location now (a cold launch never triggers the
                     // scenePhase `.active` handler), then refresh partner + widgets and
-                    // start listening for the partner's live location changes.
+                    // start listening for the partner's live profile changes.
                     await syncAndRefreshWidgets()
-                    subscribeToPartnerLocation()
+                    subscribeToPartnerProfile()
                     subscribeToMemories()
                 } else {
                     await loadPartnerProfile()
                     subscribeToCoupleLink()
                 }
+                await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
                 await flushPendingDeviceToken()
                 print("✅ SUCCESS: Profile loaded.")
             } else {
@@ -514,8 +515,9 @@ final class AppStateManager {
         try await supabase.attachSoloMemoriesToCouple(coupleId: newlyFetchedCouple.id, creatorId: user.id)
         await loadPartnerProfile()
         await loadMemories()
-        subscribeToPartnerLocation()
+        subscribeToPartnerProfile()
         subscribeToMemories()
+        await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
         WidgetCenter.shared.reloadAllTimelines()
     }
 
@@ -538,6 +540,7 @@ final class AppStateManager {
             clearPartnerWidgetData()
             WidgetCenter.shared.reloadAllTimelines()
             subscribeToCoupleLink()
+            await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
 
             print("✅ Successfully unpaired. UI should now route to PairingView.")
         } catch {
@@ -590,8 +593,9 @@ final class AppStateManager {
                     currentCouple = couple
                     await loadPartnerProfile()
                     await loadMemories()
-                    subscribeToPartnerLocation()
+                    subscribeToPartnerProfile()
                     subscribeToMemories()
+                    await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
                 }
                 return
             }
@@ -648,16 +652,16 @@ final class AppStateManager {
         }
     }
 
-    /// Subscribes to Realtime UPDATE events on the partner's `profiles` row so distance
-    /// and widgets refresh the moment the partner uploads a new location.
-    private func subscribeToPartnerLocation() {
+    /// Subscribes to Realtime UPDATE events on the partner's `profiles` row so distance,
+    /// widgets, and shared premium refresh when the partner's row changes.
+    private func subscribeToPartnerProfile() {
         guard let couple = currentCouple, let myId = currentUser?.id else { return }
         let partnerId = couple.user1Id == myId ? couple.user2Id : couple.user1Id
 
         partnerLocationListenerTask?.cancel()
         partnerLocationListenerTask = Task {
             let channel = supabase.client.realtimeV2
-                .channel("partner-location-\(partnerId)")
+                .channel("partner-profile-\(partnerId)")
             let updates = channel.postgresChange(
                 UpdateAction.self,
                 schema: "public",
@@ -667,7 +671,7 @@ final class AppStateManager {
             do {
                 try await channel.subscribeWithError()
             } catch {
-                print("🚨 Partner-location subscribe failed: \(error)")
+                print("🚨 Partner-profile subscribe failed: \(error)")
                 return
             }
             defer { Task { await self.supabase.client.realtimeV2.removeChannel(channel) } }
@@ -675,6 +679,7 @@ final class AppStateManager {
             for await _ in updates {
                 guard !Task.isCancelled else { return }
                 await loadPartnerProfile()
+                await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
             }
         }
     }

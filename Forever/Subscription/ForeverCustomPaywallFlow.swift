@@ -19,11 +19,17 @@ enum PaywallPlanOption: String, CaseIterable {
 
 enum PaywallTheme {
     static let accent = Color(red: 1.0, green: 45.0 / 255.0, blue: 85.0 / 255.0)
-    static let trustGreen = Color(red: 52.0 / 255.0, green: 199.0 / 255.0, blue: 89.0 / 255.0)
-    static let timelineOrange = Color(red: 1.0, green: 149.0 / 255.0, blue: 0)
+    static let trustGreen = Color(red: 51.0 / 255.0, green: 199.0 / 255.0, blue: 89.0 / 255.0)
+
+    private static let darkSecondary = Color(red: 166.0 / 255.0, green: 166.0 / 255.0, blue: 166.0 / 255.0)
+    private static let darkFooterLink = Color(red: 140.0 / 255.0, green: 140.0 / 255.0, blue: 140.0 / 255.0)
+    private static let darkPlanCardBorder = Color(red: 56.0 / 255.0, green: 56.0 / 255.0, blue: 56.0 / 255.0)
+
+    /// Timeline steps 1–2 circle fill (#FF9AAD).
+    static let timelineStepMuted = Color(red: 255.0 / 255.0, green: 154.0 / 255.0, blue: 173.0 / 255.0)
 
     static func background(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(red: 0.08, green: 0.08, blue: 0.1) : .white
+        scheme == .dark ? .black : .white
     }
 
     static func primaryText(for scheme: ColorScheme) -> Color {
@@ -31,7 +37,7 @@ enum PaywallTheme {
     }
 
     static func secondaryText(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.65) : Color.black.opacity(0.55)
+        scheme == .dark ? darkSecondary : Color.black.opacity(0.55)
     }
 
     static func mediaPlaceholder(for scheme: ColorScheme) -> Color {
@@ -39,23 +45,79 @@ enum PaywallTheme {
     }
 
     static func footerLink(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.45) : Color.black.opacity(0.35)
+        scheme == .dark ? darkFooterLink : Color.black.opacity(0.35)
     }
 
-    static func planCardBackground(for scheme: ColorScheme, isSelected: Bool) -> Color {
-        if isSelected {
-            return scheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.06)
-        }
-        return scheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.04)
+    /// Pricing line under the CTA (white in dark Figma frame).
+    static func ctaSubtext(for scheme: ColorScheme) -> Color {
+        scheme == .dark ? .white : .black
     }
 
     static func planCardBorder(for scheme: ColorScheme, isSelected: Bool) -> Color {
-        isSelected ? accent : (scheme == .dark ? Color.white.opacity(0.2) : Color.black.opacity(0.12))
+        if isSelected { return accent }
+        return scheme == .dark ? darkPlanCardBorder : Color.black.opacity(0.12)
     }
 
-    static func timelineConnector(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.2) : Color.black.opacity(0.12)
+    static func planCardBorderWidth(isSelected: Bool) -> CGFloat {
+        isSelected ? 2.5 : 1
     }
+
+    /// Vertical connector between timeline steps (#FF2D55 at 10% light / 30% dark).
+    static func timelineConnector(for scheme: ColorScheme) -> Color {
+        accent.opacity(scheme == .dark ? 0.30 : 0.10)
+    }
+
+    static func freeTrialBadgeBackground(for scheme: ColorScheme) -> Color {
+        scheme == .dark ? .white : accent
+    }
+
+    static func freeTrialBadgeForeground(for scheme: ColorScheme) -> Color {
+        scheme == .dark ? .black : .white
+    }
+}
+
+// MARK: - Step 3 metrics (Figma 319:504 / 284:119)
+
+private enum PaywallStep3Metrics {
+    static let horizontalPadding: CGFloat = 40
+    static let subheadToHeadline: CGFloat = 12
+    static let headlineToTimeline: CGFloat = 48
+    static let timelineToPlans: CGFloat = 32
+    static let plansToTrust: CGFloat = 10
+    static let footerSpacing: CGFloat = 16
+
+    static let subheadSize: CGFloat = 17
+    static let headlineSize: CGFloat = 30
+    static let timelineTitleSize: CGFloat = 17
+    static let timelineBodySize: CGFloat = 15
+    static let planTitleSize: CGFloat = 16
+    static let planPriceSize: CGFloat = 15
+    static let badgeSize: CGFloat = 11
+    static let ctaSize: CGFloat = 17
+    static let ctaSubtextSize: CGFloat = 14
+    static let trustLabelSize: CGFloat = 17
+
+    static let timelineCircleSize: CGFloat = 40
+    static let timelineConnectorWidth: CGFloat = 9
+    static let timelineConnectorHeight: CGFloat = 66
+    static let timelineConnectorRadius: CGFloat = 2
+    static let timelineRowMinHeight: CGFloat = 100
+    static let timelineIconToTextSpacing: CGFloat = 14
+
+    static let planCardCornerRadius: CGFloat = 16
+    static let planCardMinHeight: CGFloat = 96
+    static let planCardPaddingTop: CGFloat = 16
+    static let planCardPaddingHorizontal: CGFloat = 14
+    static let planCardPaddingBottom: CGFloat = 14
+    static let planCardInnerSpacing: CGFloat = 10
+    static let planCardSpacing: CGFloat = 12
+
+    static let badgeHorizontalPadding: CGFloat = 10
+    static let badgeVerticalPadding: CGFloat = 5
+    static let badgeCornerRadius: CGFloat = 10
+    static let badgeTopOffset: CGFloat = -11
+
+    static let timelineTodayBody = "Unlock all of Forever's features for you and your partner."
 }
 
 // MARK: - Container
@@ -136,6 +198,9 @@ struct ForeverCustomPaywallFlow: View {
                 onCompleted()
             }
         }
+        .onChange(of: subscription.isPro) { _, isPro in
+            if isPro { onCompleted() }
+        }
         .overlay(alignment: .top) {
             if let message = subscription.lastErrorMessage {
                 PaywallErrorBanner(message: message) {
@@ -170,6 +235,7 @@ struct ForeverCustomPaywallFlow: View {
             )
         case .reminder:
             PaywallReminderStepView(
+                package: subscription.yearlyPackage ?? subscription.monthlyPackage,
                 colorScheme: colorScheme,
                 onContinue: advanceFromReminder
             )
@@ -268,16 +334,12 @@ private struct PaywallOfferStepView: View {
 
             Spacer(minLength: 24)
 
-            VStack(spacing: 10) {
-                PaywallPrimaryButton(title: "Try for $0.00", action: onContinue)
-
-                if let package {
-                    Text(PaywallPricingFormatter.priceSubtitle(for: package))
-                        .font(.subheadline)
-                        .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
-                        .multilineTextAlignment(.center)
-                }
-            }
+            PaywallCTABlock(
+                title: "Try for $0.00",
+                package: package,
+                colorScheme: colorScheme,
+                action: onContinue
+            )
             .padding(.horizontal, 32)
             .padding(.bottom, 16)
         }
@@ -287,6 +349,7 @@ private struct PaywallOfferStepView: View {
 // MARK: - Step 2: Reminder / notifications
 
 private struct PaywallReminderStepView: View {
+    let package: Package?
     let colorScheme: ColorScheme
     let onContinue: () -> Void
 
@@ -321,9 +384,14 @@ private struct PaywallReminderStepView: View {
 
             Spacer(minLength: 24)
 
-            PaywallPrimaryButton(title: "Continue for FREE", action: onContinue)
-                .padding(.horizontal, 32)
-                .padding(.bottom, 16)
+            PaywallCTABlock(
+                title: "Continue for FREE",
+                package: package,
+                colorScheme: colorScheme,
+                action: onContinue
+            )
+            .padding(.horizontal, 32)
+            .padding(.bottom, 16)
         }
     }
 }
@@ -358,83 +426,61 @@ private struct PaywallPurchaseStepView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(spacing: 0) {
-                PaywallStepProgressHeader(colorScheme: colorScheme)
-                    .padding(.top, 8)
+            VStack(alignment: .leading, spacing: 0) {
+                PaywallPartnerSubheadHeader(colorScheme: colorScheme)
 
                 PaywallTrialHeadline(trialDays: trialDays, colorScheme: colorScheme)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 16)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, PaywallStep3Metrics.subheadToHeadline)
 
-                PaywallTrialTimeline(
-                    trialDays: trialDays,
-                    colorScheme: colorScheme
-                )
-                .padding(.horizontal, 24)
-                .padding(.top, 24)
+                PaywallTrialTimeline(trialDays: trialDays, colorScheme: colorScheme)
+                    .padding(.top, PaywallStep3Metrics.headlineToTimeline)
 
                 PaywallPlanPicker(
                     monthlyPackage: monthlyPackage,
                     yearlyPackage: yearlyPackage,
                     selectedPlan: $selectedPlan,
+                    trialDays: trialDays,
                     colorScheme: colorScheme
                 )
-                .padding(.horizontal, 24)
-                .padding(.top, 24)
+                .padding(.top, PaywallStep3Metrics.timelineToPlans)
 
-                PaywallTrustRow(colorScheme: colorScheme)
-                    .padding(.top, 24)
+                VStack(spacing: PaywallStep3Metrics.footerSpacing) {
+                    PaywallTrustRow(colorScheme: colorScheme, labelSize: PaywallStep3Metrics.trustLabelSize)
+                        .frame(maxWidth: .infinity)
 
-                VStack(spacing: 10) {
-                    PaywallPrimaryButton(
+                    PaywallCTABlock(
                         title: PaywallPricingFormatter.purchaseCTATitle(trialDays: trialDays),
+                        package: yearlyPackage ?? activePackage,
+                        colorScheme: colorScheme,
+                        isEnabled: activePackage != nil,
                         action: onPurchase
                     )
-                    .disabled(activePackage == nil)
-
-                    if let yearlyPackage, selectedPlan == .yearly {
-                        Text(PaywallPricingFormatter.trialPurchaseFootnote(
-                            yearlyPackage: yearlyPackage,
-                            trialDays: trialDays
-                        ))
-                        .font(.subheadline)
-                        .foregroundStyle(PaywallTheme.secondaryText(for: colorScheme))
-                        .multilineTextAlignment(.center)
-                    } else if let package = activePackage {
-                        Text(PaywallPricingFormatter.priceSubtitle(for: package))
-                            .font(.subheadline)
-                            .foregroundStyle(PaywallTheme.secondaryText(for: colorScheme))
-                            .multilineTextAlignment(.center)
-                    }
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 20)
+                .padding(.top, PaywallStep3Metrics.plansToTrust)
                 .padding(.bottom, 16)
             }
+            .padding(.horizontal, PaywallStep3Metrics.horizontalPadding)
         }
     }
 }
 
 // MARK: - Step 3 subviews
 
-private struct PaywallStepProgressHeader: View {
+private struct PaywallPartnerSubheadHeader: View {
     let colorScheme: ColorScheme
 
     var body: some View {
-        VStack(spacing: 12) {
-            Text("One subscription for two accounts")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(PaywallTheme.secondaryText(for: colorScheme))
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Your partner doesn't pay anything")
+                .font(.system(size: PaywallStep3Metrics.subheadSize, weight: .semibold))
+                .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
 
-            HStack(spacing: 6) {
-                ForEach(0..<3, id: \.self) { _ in
-                    Capsule()
-                        .fill(PaywallTheme.accent)
-                        .frame(height: 4)
-                }
-            }
+            Capsule()
+                .fill(PaywallTheme.accent)
+                .frame(height: 3)
         }
-        .padding(.horizontal, 24)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -443,14 +489,33 @@ private struct PaywallTrialHeadline: View {
     let colorScheme: ColorScheme
 
     var body: some View {
-        (
-            Text("Start your \(trialDays)-day ")
-            + Text("FREE").foregroundStyle(PaywallTheme.accent).bold()
-            + Text(" trial to continue")
-        )
-        .font(.system(size: 28, weight: .bold, design: .rounded))
-        .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
+        VStack(spacing: 0) {
+            Text("Start your \(trialDays)-day")
+                .font(.system(size: PaywallStep3Metrics.headlineSize, weight: .bold, design: .rounded))
+                .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
+
+            secondLine
+        }
         .multilineTextAlignment(.center)
+    }
+
+    @ViewBuilder
+    private var secondLine: some View {
+        let font = Font.system(size: PaywallStep3Metrics.headlineSize, weight: .bold, design: .rounded)
+        if colorScheme == .dark {
+            Text("FREE trial to continue")
+                .font(font)
+                .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
+        } else {
+            (
+                Text("FREE")
+                    .foregroundStyle(PaywallTheme.accent)
+                    .bold()
+                + Text(" trial to continue")
+                    .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
+            )
+            .font(font)
+        }
     }
 }
 
@@ -463,24 +528,24 @@ private struct PaywallTrialTimeline: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             timelineRow(
-                icon: "lock.fill",
-                iconBackground: PaywallTheme.timelineOrange,
+                emoji: "🔒",
+                isBilling: false,
                 title: "Today",
-                body: "Unlock all of Forever's features for you and your partner.",
+                body: PaywallStep3Metrics.timelineTodayBody,
                 showsConnector: true
             )
 
             timelineRow(
-                icon: "bell.fill",
-                iconBackground: PaywallTheme.accent,
+                emoji: "🔔",
+                isBilling: false,
                 title: "In \(reminderDay) Days - Reminder",
                 body: "We'll send you a reminder that your trial is ending soon.",
                 showsConnector: true
             )
 
             timelineRow(
-                icon: "diamond.fill",
-                iconBackground: PaywallTheme.primaryText(for: colorScheme),
+                emoji: "💎",
+                isBilling: true,
                 title: "In \(trialDays) Days - Billing Starts",
                 body: "You'll be charged on \(PaywallPricingFormatter.billingStartDate(trialDays: trialDays)) unless you cancel anytime before.",
                 showsConnector: false
@@ -489,41 +554,42 @@ private struct PaywallTrialTimeline: View {
     }
 
     private func timelineRow(
-        icon: String,
-        iconBackground: Color,
+        emoji: String,
+        isBilling: Bool,
         title: String,
         body: String,
         showsConnector: Bool
     ) -> some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: PaywallStep3Metrics.timelineIconToTextSpacing) {
             VStack(spacing: 0) {
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(iconBackground)
+                Text(emoji)
+                    .font(.system(size: 16))
+                    .frame(width: PaywallStep3Metrics.timelineCircleSize, height: PaywallStep3Metrics.timelineCircleSize)
+                    .background(isBilling ? PaywallTheme.accent : PaywallTheme.timelineStepMuted)
                     .clipShape(Circle())
 
                 if showsConnector {
-                    Rectangle()
+                    RoundedRectangle(cornerRadius: PaywallStep3Metrics.timelineConnectorRadius, style: .continuous)
                         .fill(PaywallTheme.timelineConnector(for: colorScheme))
-                        .frame(width: 2)
-                        .frame(minHeight: 48)
+                        .frame(
+                            width: PaywallStep3Metrics.timelineConnectorWidth,
+                            height: PaywallStep3Metrics.timelineConnectorHeight
+                        )
                 }
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: PaywallStep3Metrics.timelineTitleSize, weight: .bold))
                     .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
 
                 Text(body)
-                    .font(.subheadline)
+                    .font(.system(size: PaywallStep3Metrics.timelineBodySize))
                     .foregroundStyle(PaywallTheme.secondaryText(for: colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.bottom, showsConnector ? 16 : 0)
         }
+        .frame(minHeight: showsConnector ? PaywallStep3Metrics.timelineRowMinHeight : nil, alignment: .top)
     }
 }
 
@@ -531,10 +597,11 @@ private struct PaywallPlanPicker: View {
     let monthlyPackage: Package?
     let yearlyPackage: Package?
     @Binding var selectedPlan: PaywallPlanOption
+    let trialDays: Int
     let colorScheme: ColorScheme
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: PaywallStep3Metrics.planCardSpacing) {
             if let monthlyPackage {
                 PaywallPlanCard(
                     title: "Monthly",
@@ -551,7 +618,7 @@ private struct PaywallPlanPicker: View {
                 PaywallPlanCard(
                     title: "Yearly",
                     priceLabel: PaywallPricingFormatter.planCardPriceLabel(for: yearlyPackage),
-                    badge: PaywallPricingFormatter.freeTrialBadgeText(for: yearlyPackage),
+                    badge: PaywallPricingFormatter.freeTrialBadgeText(for: yearlyPackage, trialDays: trialDays),
                     isSelected: selectedPlan == .yearly,
                     colorScheme: colorScheme
                 ) {
@@ -559,6 +626,21 @@ private struct PaywallPlanPicker: View {
                 }
             }
         }
+    }
+}
+
+private struct PaywallPlanBadge: View {
+    let text: String
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: PaywallStep3Metrics.badgeSize, weight: .bold))
+            .foregroundStyle(PaywallTheme.freeTrialBadgeForeground(for: colorScheme))
+            .padding(.horizontal, PaywallStep3Metrics.badgeHorizontalPadding)
+            .padding(.vertical, PaywallStep3Metrics.badgeVerticalPadding)
+            .background(PaywallTheme.freeTrialBadgeBackground(for: colorScheme))
+            .clipShape(RoundedRectangle(cornerRadius: PaywallStep3Metrics.badgeCornerRadius, style: .continuous))
     }
 }
 
@@ -572,60 +654,115 @@ private struct PaywallPlanCard: View {
 
     var body: some View {
         Button(action: onSelect) {
-            VStack(alignment: .leading, spacing: 8) {
-                if let badge {
-                    Text(badge)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(PaywallTheme.accent)
-                        .clipShape(Capsule())
+            ZStack(alignment: .topTrailing) {
+                VStack(alignment: .leading, spacing: PaywallStep3Metrics.planCardInnerSpacing) {
+                    Text(title)
+                        .font(.system(size: PaywallStep3Metrics.planTitleSize, weight: .semibold))
+                        .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
+                        .padding(.top, badge == nil ? 0 : 8)
+
+                    Text(priceLabel)
+                        .font(.system(size: PaywallStep3Metrics.planPriceSize))
+                        .foregroundStyle(PaywallTheme.secondaryText(for: colorScheme))
+
+                    Spacer(minLength: 0)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, PaywallStep3Metrics.planCardPaddingTop)
+                .padding(.horizontal, PaywallStep3Metrics.planCardPaddingHorizontal)
+                .padding(.bottom, PaywallStep3Metrics.planCardPaddingBottom)
+                .frame(minHeight: PaywallStep3Metrics.planCardMinHeight)
 
-                Text(title)
-                    .font(.headline)
-                    .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
-
-                Text(priceLabel)
-                    .font(.subheadline)
-                    .foregroundStyle(PaywallTheme.secondaryText(for: colorScheme))
-
-                Spacer(minLength: 0)
+                PaywallPlanSelectionIndicator(isSelected: isSelected, colorScheme: colorScheme)
+                    .padding(12)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .frame(minHeight: 100)
-            .background(PaywallTheme.planCardBackground(for: colorScheme, isSelected: isSelected))
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: PaywallStep3Metrics.planCardCornerRadius, style: .continuous)
                     .strokeBorder(
                         PaywallTheme.planCardBorder(for: colorScheme, isSelected: isSelected),
-                        lineWidth: isSelected ? 2 : 1
+                        lineWidth: PaywallTheme.planCardBorderWidth(isSelected: isSelected)
                     )
             )
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(alignment: .top) {
+                if let badge {
+                    PaywallPlanBadge(text: badge, colorScheme: colorScheme)
+                        .offset(y: PaywallStep3Metrics.badgeTopOffset)
+                }
+            }
         }
         .buttonStyle(.plain)
     }
 }
 
-// MARK: - Shared components
-
-private struct PaywallTrustRow: View {
+private struct PaywallPlanSelectionIndicator: View {
+    let isSelected: Bool
     let colorScheme: ColorScheme
 
     var body: some View {
-        HStack(spacing: 8) {
+        Group {
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 22, height: 22)
+                    .background(PaywallTheme.accent)
+                    .clipShape(Circle())
+            } else {
+                Circle()
+                    .strokeBorder(
+                        PaywallTheme.planCardBorder(for: colorScheme, isSelected: false),
+                        lineWidth: 2
+                    )
+                    .frame(width: 22, height: 22)
+            }
+        }
+    }
+}
+
+// MARK: - Shared components
+
+/// Primary CTA with pricing subtext (e.g. "then just $44.99 per year ($0.94/week)").
+private struct PaywallCTABlock: View {
+    let title: String
+    let package: Package?
+    let colorScheme: ColorScheme
+    var isEnabled: Bool = true
+    let action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            PaywallPrimaryButton(
+                title: title,
+                isEnabled: isEnabled,
+                fontSize: PaywallStep3Metrics.ctaSize,
+                action: action
+            )
+
+            if let package {
+                Text(PaywallPricingFormatter.priceSubtitle(for: package))
+                    .font(.system(size: PaywallStep3Metrics.ctaSubtextSize))
+                    .foregroundStyle(PaywallTheme.ctaSubtext(for: colorScheme))
+                    .multilineTextAlignment(.center)
+            }
+        }
+    }
+}
+
+private struct PaywallTrustRow: View {
+    let colorScheme: ColorScheme
+    var labelSize: CGFloat = 17
+
+    var body: some View {
+        HStack(spacing: 10) {
             Image(systemName: "checkmark")
-                .font(.body.weight(.bold))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 28, height: 28)
                 .background(PaywallTheme.trustGreen)
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
 
             Text("No Payment Due Now")
-                .font(.body.weight(.semibold))
+                .font(.system(size: labelSize, weight: .semibold))
                 .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
         }
     }
@@ -634,12 +771,13 @@ private struct PaywallTrustRow: View {
 struct PaywallPrimaryButton: View {
     let title: String
     var isEnabled: Bool = true
+    var fontSize: CGFloat = 17
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.headline)
+                .font(.system(size: fontSize, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)

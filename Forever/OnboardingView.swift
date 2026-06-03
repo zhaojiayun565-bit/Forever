@@ -72,6 +72,12 @@ struct OnboardingView: View {
     @State private var showOnboardingAddMemory = false
     @State private var localOnboardingMemory: (image: UIImage, note: String, coordinate: CLLocationCoordinate2D)?
     @State private var onboardingMemoryStageError: String?
+    @State private var isInvitedPartner = false
+    @AppStorage("isInvitedPartner") private var persistedInvitedPartner = false
+
+    private var isInvitedFlow: Bool {
+        isInvitedPartner || persistedInvitedPartner
+    }
 
     private var isIntroPhase: Bool {
         currentStep.rawValue <= OnboardingStep.commitmentEncouragement.rawValue
@@ -109,7 +115,7 @@ struct OnboardingView: View {
             }
 
             VStack {
-                if currentStep != .paywall {
+                if currentStep != .paywall && !isInvitedFlow {
                     ProgressView(
                         value: onboardingProgressValue,
                         total: Double(OnboardingStep.progressStepCount)
@@ -124,8 +130,11 @@ struct OnboardingView: View {
                 // View Router
                 switch currentStep {
                 case .welcome:
-                    IntroWelcomeView(action: advance)
-                        .transition(standardStepTransition)
+                    IntroWelcomeView(
+                        onGetStarted: advance,
+                        onInviteCode: skipToInviteLogin
+                    )
+                    .transition(standardStepTransition)
                 case .problem:
                     IntroPromptStepView(
                         title: "Do you ever feel like life gets too busy to truly connect with your partner?",
@@ -225,8 +234,10 @@ struct OnboardingView: View {
                         .transition(standardStepTransition)
                 case .login:
                     OnboardingLoginView(
+                        isInvitedPartner: isInvitedFlow,
                         action: advance,
-                        onAuthenticated: syncOnboardingMemoryAfterAuth
+                        onAuthenticated: syncOnboardingMemoryAfterAuth,
+                        onInvitedPartnerComplete: completeInvitedPartnerOnboarding
                     )
                     .transition(standardStepTransition)
                 case .investment:
@@ -243,6 +254,12 @@ struct OnboardingView: View {
             }
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: currentStep)
+        .onAppear {
+            if persistedInvitedPartner, currentStep.rawValue < OnboardingStep.login.rawValue {
+                isInvitedPartner = true
+                currentStep = .login
+            }
+        }
         .onChange(of: currentStep) { _, step in
             if step == .features {
                 featureTab = 0
@@ -274,6 +291,25 @@ struct OnboardingView: View {
             from: nil,
             for: nil
         )
+    }
+
+    /// Skips onboarding funnel and routes invited partners straight to Sign-In.
+    private func skipToInviteLogin() {
+        resignFirstResponder()
+        isInvitedPartner = true
+        persistedInvitedPartner = true
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+            currentStep = .login
+        }
+    }
+
+    /// Ends onboarding for invited partners after Apple Sign-In (pairing next).
+    private func completeInvitedPartnerOnboarding() {
+        persistedInvitedPartner = false
+        isInvitedPartner = false
+        withAnimation(.easeInOut(duration: 0.5)) {
+            hasCompletedOnboarding = true
+        }
     }
 
     private func goToPaywall() {
@@ -371,13 +407,12 @@ struct IntroPrimaryButton: View {
 }
 
 struct IntroWelcomeView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let action: () -> Void
+    let onGetStarted: () -> Void
+    let onInviteCode: () -> Void
     @State private var titleVisible = false
-    @State private var hasAdvanced = false
 
     var body: some View {
-        VStack {
+        VStack(spacing: OnboardingLayout.bodyStackSpacing) {
             Spacer()
             Text("Welcome to Forever.")
                 .font(OnboardingLayout.titleFont)
@@ -386,27 +421,30 @@ struct IntroWelcomeView: View {
                 .opacity(titleVisible ? 1 : 0)
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
             Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            advanceOnce()
+
+            IntroPrimaryButton(title: "Get Started", action: onGetStarted)
+                .padding(.horizontal, OnboardingLayout.horizontalPadding)
+
+            Button(action: onInviteCode) {
+                Text("I have an invite code")
+                    .font(.headline)
+                    .foregroundStyle(OnboardingIntroTheme.accent)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(OnboardingIntroTheme.accent.opacity(0.6), lineWidth: 1.5)
+                    )
+            }
+            .buttonStyle(BubblyButtonStyle())
+            .padding(.horizontal, OnboardingLayout.horizontalPadding)
+            .padding(.bottom, 8)
         }
         .onAppear {
             withAnimation(.easeInOut(duration: 0.7)) {
                 titleVisible = true
             }
-            let delay = reduceMotion ? 1.2 : 2.0
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                advanceOnce()
-            }
         }
-    }
-
-    private func advanceOnce() {
-        guard !hasAdvanced else { return }
-        hasAdvanced = true
-        action()
     }
 }
 
@@ -1098,6 +1136,7 @@ struct FeaturePage: View {
 
 /// Onboarding paywall: custom 3-step flow with skip path for free tier.
 struct OnboardingPaywallStep: View {
+    @Environment(SubscriptionManager.self) private var subscription
     let onContinue: () -> Void
 
     var body: some View {
@@ -1105,12 +1144,17 @@ struct OnboardingPaywallStep: View {
             onCompleted: onContinue,
             onSkip: onContinue
         )
+        .onChange(of: subscription.isPro) { _, isPro in
+            if isPro { onContinue() }
+        }
     }
 }
 
 struct OnboardingLoginView: View {
+    var isInvitedPartner = false
     let action: () -> Void
     var onAuthenticated: (() async -> Void)?
+    var onInvitedPartnerComplete: (() -> Void)?
     @Environment(AppStateManager.self) private var state
     @Environment(\.colorScheme) private var colorScheme
     
@@ -1164,11 +1208,9 @@ struct OnboardingLoginView: View {
             .disabled(isLoggingIn)
         }
         .onAppear {
-            // If they close the app and reopen it, skip this step if they are already logged in!
             if state.currentUser != nil {
                 Task {
-                    await onAuthenticated?()
-                    action()
+                    await finishLoginAfterAuth()
                 }
             }
         }
@@ -1195,12 +1237,9 @@ struct OnboardingLoginView: View {
                     do {
                         try await SupabaseManager.shared.signInWithApple(idToken: idTokenString, nonce: nonce)
                         await state.initializeApp()
-                        await onAuthenticated?()
-
-                        // Successfully logged in! Smoothly advance to the paywall.
-                        DispatchQueue.main.async {
+                        await finishLoginAfterAuth()
+                        await MainActor.run {
                             isLoggingIn = false
-                            action()
                         }
                     } catch {
                         DispatchQueue.main.async {
@@ -1215,6 +1254,20 @@ struct OnboardingLoginView: View {
         case .failure(let error):
             authErrorMessage = "Apple Sign In was cancelled or failed. Please try again."
             print("Authorization failed: \(error)")
+        }
+    }
+
+    /// Invited partners skip memory upload and paywall; standard flow continues to investment.
+    private func finishLoginAfterAuth() async {
+        if isInvitedPartner {
+            await MainActor.run {
+                onInvitedPartnerComplete?()
+            }
+            return
+        }
+        await onAuthenticated?()
+        await MainActor.run {
+            action()
         }
     }
 }

@@ -60,13 +60,6 @@ enum PaywallPricingFormatter {
         }
     }
 
-    /// Footnote under purchase CTA on step 3.
-    static func trialPurchaseFootnote(yearlyPackage: Package, trialDays: Int = 7) -> String {
-        let yearlyPrice = yearlyPackage.storeProduct.localizedPriceString
-        let perMonth = planCardPriceLabel(for: yearlyPackage)
-        return "\(trialDays)-day free, then \(yearlyPrice) per year (\(perMonth))"
-    }
-
     /// Billing date copy for timeline step 3.
     static func billingStartDate(trialDays: Int = 7) -> String {
         guard let date = Calendar.current.date(byAdding: .day, value: trialDays, to: Date()) else {
@@ -77,24 +70,27 @@ enum PaywallPricingFormatter {
         return formatter.string(from: date)
     }
 
-    /// Badge text for free trial on yearly plan.
-    static func freeTrialBadgeText(for package: Package) -> String? {
-        guard let intro = package.storeProduct.introductoryDiscount,
-              intro.paymentMode == .freeTrial else { return nil }
-        let days = intro.subscriptionPeriod.value
-        let unit = intro.subscriptionPeriod.unit
-        switch unit {
-        case .day where days > 0:
-            return "\(days) DAYS FREE"
-        case .week where days > 0:
-            return "\(days * 7) DAYS FREE"
-        default:
-            return "FREE TRIAL"
+    /// Badge text for free trial on yearly plan (always shown; falls back to trialDays).
+    static func freeTrialBadgeText(for package: Package?, trialDays: Int = 7) -> String {
+        if let package,
+           let intro = package.storeProduct.introductoryDiscount,
+           intro.paymentMode == .freeTrial {
+            let days = intro.subscriptionPeriod.value
+            let unit = intro.subscriptionPeriod.unit
+            switch unit {
+            case .day where days > 0:
+                return "\(days) DAYS FREE"
+            case .week where days > 0:
+                return "\(days * 7) DAYS FREE"
+            default:
+                break
+            }
         }
+        return "\(trialDays) DAYS FREE"
     }
 
     static func purchaseCTATitle(trialDays: Int = 7) -> String {
-        "Start My \(trialDays)-day FREE Trial"
+        "Start my \(trialDays)-day FREE trial"
     }
 
     private static func formatCurrency(_ amount: Decimal, currencyCode: String?) -> String? {

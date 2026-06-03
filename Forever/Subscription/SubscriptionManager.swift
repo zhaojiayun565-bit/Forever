@@ -11,11 +11,20 @@ final class SubscriptionManager {
     private(set) var customerInfo: CustomerInfo?
     private(set) var offerings: Offerings?
     private(set) var isLoading = false
+    /// Active premium from Supabase (self or linked partner profile).
+    private(set) var hasDatabasePremium = false
     var lastErrorMessage: String?
 
-    /// Active Pro entitlement (Forever: App for Couples Pro).
-    var isPro: Bool {
+    private let supabase = SupabaseManager.shared
+
+    /// Active Pro entitlement from RevenueCat on this device.
+    var hasLocalEntitlement: Bool {
         customerInfo?.entitlements[RevenueCatConfiguration.proEntitlementID]?.isActive == true
+    }
+
+    /// Pro access: local purchase or shared couple premium in Supabase.
+    var isPro: Bool {
+        hasLocalEntitlement || hasDatabasePremium
     }
 
     var activeProExpirationDate: Date? {
@@ -53,6 +62,7 @@ final class SubscriptionManager {
                     self.customerInfo = info
                     self.lastErrorMessage = nil
                 }
+                await self.syncPremiumToSupabase()
             }
         }
         Task { await refresh() }
@@ -66,8 +76,10 @@ final class SubscriptionManager {
                 customerInfo = result.customerInfo
             } else {
                 customerInfo = try await Purchases.shared.logOut()
+                hasDatabasePremium = false
             }
             lastErrorMessage = nil
+            await syncPremiumToSupabase()
         } catch {
             lastErrorMessage = error.localizedDescription
         }
@@ -83,9 +95,32 @@ final class SubscriptionManager {
             customerInfo = try await info
             offerings = try await offers
             lastErrorMessage = nil
+            await syncPremiumToSupabase()
         } catch {
             lastErrorMessage = error.localizedDescription
         }
+    }
+
+    /// Recomputes shared premium from Supabase profiles (self + partner).
+    func refreshSharedPremiumAccess(appState: AppStateManager) async {
+        if hasLocalEntitlement {
+            try? await supabase.updatePremiumStatus(
+                isActive: true,
+                expiresAt: activeProExpirationDate
+            )
+        }
+
+        if let updated = try? await supabase.fetchProfile() {
+            appState.currentUser = updated
+        }
+
+        if appState.currentCouple != nil {
+            await appState.loadPartnerProfile()
+        }
+
+        let selfActive = appState.currentUser?.isPremiumActive == true
+        let partnerActive = appState.partnerProfile?.isPremiumActive == true
+        hasDatabasePremium = selfActive || partnerActive
     }
 
     /// Purchases a package from the current offering.
@@ -99,6 +134,7 @@ final class SubscriptionManager {
             }
             customerInfo = result.customerInfo
             lastErrorMessage = nil
+            await syncPremiumToSupabase()
             return result.customerInfo
         } catch let error as SubscriptionError {
             lastErrorMessage = error.localizedDescription
@@ -117,6 +153,7 @@ final class SubscriptionManager {
             let info = try await Purchases.shared.restorePurchases()
             customerInfo = info
             lastErrorMessage = nil
+            await syncPremiumToSupabase()
             return info
         } catch {
             lastErrorMessage = error.localizedDescription
@@ -147,6 +184,19 @@ final class SubscriptionManager {
     /// Clears the last surfaced error (e.g. after user dismisses banner).
     func clearLastError() {
         lastErrorMessage = nil
+    }
+
+    /// Writes RevenueCat entitlement state to the signed-in user's profile.
+    private func syncPremiumToSupabase() async {
+        guard await supabase.getSession() != nil else { return }
+        do {
+            try await supabase.updatePremiumStatus(
+                isActive: hasLocalEntitlement,
+                expiresAt: hasLocalEntitlement ? activeProExpirationDate : nil
+            )
+        } catch {
+            print("🚨 Premium sync error: \(error)")
+        }
     }
 }
 

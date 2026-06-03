@@ -16,6 +16,8 @@ struct Profile: Codable, Identifiable, Hashable {
     var latestMessage: String?
     var anniversaryDate: Date?
     var deviceToken: String?
+    var isPremium: Bool?
+    var premiumExpiresAt: Date?
     let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -30,7 +32,16 @@ struct Profile: Codable, Identifiable, Hashable {
         case latestMessage = "latest_message"
         case anniversaryDate = "anniversary_date"
         case deviceToken = "device_token"
+        case isPremium = "is_premium"
+        case premiumExpiresAt = "premium_expires_at"
         case createdAt = "created_at"
+    }
+
+    /// Whether this profile row represents an active premium subscription.
+    var isPremiumActive: Bool {
+        guard isPremium == true else { return false }
+        if let expires = premiumExpiresAt, expires < Date() { return false }
+        return true
     }
 }
 
@@ -93,6 +104,8 @@ extension Profile {
         latestMessage: "Thinking of you",
         anniversaryDate: Date(),
         deviceToken: nil,
+        isPremium: false,
+        premiumExpiresAt: nil,
         createdAt: Date()
     )
 }

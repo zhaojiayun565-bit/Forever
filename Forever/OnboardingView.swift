@@ -28,6 +28,12 @@ enum OnboardingIntroTheme {
     static let accent = Color(red: 1.0, green: 45.0 / 255.0, blue: 85.0 / 255.0)
 }
 
+/// AppStorage keys shared between onboarding and pairing flows.
+enum OnboardingFlowStorage {
+    static let postAuthCreatorFunnel = "postAuthCreatorFunnel"
+    static let isInvitedPartner = "isInvitedPartner"
+}
+
 enum OnboardingLayout {
     static let horizontalPadding: CGFloat = 40
     static let titleFont = Font.system(size: 36, weight: .bold, design: .rounded)
@@ -73,10 +79,16 @@ struct OnboardingView: View {
     @State private var localOnboardingMemory: (image: UIImage, note: String, coordinate: CLLocationCoordinate2D)?
     @State private var onboardingMemoryStageError: String?
     @State private var isInvitedPartner = false
-    @AppStorage("isInvitedPartner") private var persistedInvitedPartner = false
+    @AppStorage(OnboardingFlowStorage.isInvitedPartner) private var persistedInvitedPartner = false
+    @AppStorage(OnboardingFlowStorage.postAuthCreatorFunnel) private var postAuthCreatorFunnel = false
+    @State private var isPostAuthCreatorFunnel = false
 
     private var isInvitedFlow: Bool {
         isInvitedPartner || persistedInvitedPartner
+    }
+
+    private var showsOnboardingProgress: Bool {
+        currentStep != .paywall && !isInvitedFlow
     }
 
     private var isIntroPhase: Bool {
@@ -98,6 +110,12 @@ struct OnboardingView: View {
     }
 
     var body: some View {
+        NavigationStack {
+            onboardingContent
+        }
+    }
+
+    private var onboardingContent: some View {
         ZStack {
             if isIntroPhase {
                 OnboardingIntroTheme.background
@@ -115,7 +133,7 @@ struct OnboardingView: View {
             }
 
             VStack {
-                if currentStep != .paywall && !isInvitedFlow {
+                if showsOnboardingProgress {
                     ProgressView(
                         value: onboardingProgressValue,
                         total: Double(OnboardingStep.progressStepCount)
@@ -235,9 +253,12 @@ struct OnboardingView: View {
                 case .login:
                     OnboardingLoginView(
                         isInvitedPartner: isInvitedFlow,
+                        skipAuthenticatedSteps: isPostAuthCreatorFunnel,
                         action: advance,
                         onAuthenticated: syncOnboardingMemoryAfterAuth,
-                        onInvitedPartnerComplete: completeInvitedPartnerOnboarding
+                        onInvitedPartnerComplete: completeInvitedPartnerOnboarding,
+                        onInviteBack: isInvitedFlow ? returnFromInviteLogin : nil,
+                        onSkipAuthenticated: goToPaywall
                     )
                     .transition(standardStepTransition)
                 case .investment:
@@ -255,10 +276,7 @@ struct OnboardingView: View {
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: currentStep)
         .onAppear {
-            if persistedInvitedPartner, currentStep.rawValue < OnboardingStep.login.rawValue {
-                isInvitedPartner = true
-                currentStep = .login
-            }
+            applyPendingFlowFlags()
         }
         .onChange(of: currentStep) { _, step in
             if step == .features {
@@ -280,8 +298,42 @@ struct OnboardingView: View {
 
     private func advance() {
         resignFirstResponder()
-        guard let next = OnboardingStep(rawValue: currentStep.rawValue + 1) else { return }
+        guard let next = nextStep(after: currentStep) else { return }
         currentStep = next
+    }
+
+    /// Next step in the funnel; skips login/investment when resuming as an authenticated creator.
+    private func nextStep(after step: OnboardingStep) -> OnboardingStep? {
+        guard var next = OnboardingStep(rawValue: step.rawValue + 1) else { return nil }
+        if isPostAuthCreatorFunnel, state.currentUser != nil {
+            if next == .login { next = .paywall }
+            if next == .investment { next = .paywall }
+        }
+        return next
+    }
+
+    private func applyPendingFlowFlags() {
+        if postAuthCreatorFunnel {
+            isPostAuthCreatorFunnel = true
+            isInvitedPartner = false
+            persistedInvitedPartner = false
+            currentStep = .firstMemoryMap
+            return
+        }
+        if persistedInvitedPartner, currentStep.rawValue < OnboardingStep.login.rawValue {
+            isInvitedPartner = true
+            currentStep = .login
+        }
+    }
+
+    /// Returns from invite Sign-In to the welcome step.
+    private func returnFromInviteLogin() {
+        resignFirstResponder()
+        isInvitedPartner = false
+        persistedInvitedPartner = false
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+            currentStep = .welcome
+        }
     }
 
     private func resignFirstResponder() {
@@ -367,15 +419,16 @@ struct OnboardingView: View {
     private func completeOnboarding() {
         Task {
             let anniversaryDate = Date(timeIntervalSince1970: anniversary)
+            let nameToSave = myName.isEmpty ? (state.currentUser?.displayName ?? "") : myName
 
-            // Push details to Supabase (partnerName remains local until they pair)
-            try? await SupabaseManager.shared.updateProfileDetails(name: myName, anniversary: anniversaryDate)
+            try? await SupabaseManager.shared.updateProfileDetails(name: nameToSave, anniversary: anniversaryDate)
 
-            // Refresh state so SettingsView fetches the updated currentUser
             await state.initializeApp()
             await syncOnboardingMemoryAfterAuth()
 
             await MainActor.run {
+                postAuthCreatorFunnel = false
+                isPostAuthCreatorFunnel = false
                 withAnimation(.easeInOut(duration: 0.5)) {
                     hasCompletedOnboarding = true
                 }
@@ -1152,9 +1205,12 @@ struct OnboardingPaywallStep: View {
 
 struct OnboardingLoginView: View {
     var isInvitedPartner = false
+    var skipAuthenticatedSteps = false
     let action: () -> Void
     var onAuthenticated: (() async -> Void)?
     var onInvitedPartnerComplete: (() -> Void)?
+    var onInviteBack: (() -> Void)?
+    var onSkipAuthenticated: (() -> Void)?
     @Environment(AppStateManager.self) private var state
     @Environment(\.colorScheme) private var colorScheme
     
@@ -1207,10 +1263,24 @@ struct OnboardingLoginView: View {
             .padding(.bottom, 60)
             .disabled(isLoggingIn)
         }
+        .navigationBarBackButtonHidden(isInvitedPartner)
+        .toolbar {
+            if isInvitedPartner {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: { onInviteBack?() }) {
+                        Label("Back", systemImage: "chevron.left")
+                    }
+                }
+            }
+        }
         .onAppear {
             if state.currentUser != nil {
                 Task {
-                    await finishLoginAfterAuth()
+                    if skipAuthenticatedSteps {
+                        await MainActor.run { onSkipAuthenticated?() }
+                    } else {
+                        await finishLoginAfterAuth()
+                    }
                 }
             }
         }

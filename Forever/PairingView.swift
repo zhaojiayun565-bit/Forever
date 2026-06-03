@@ -3,13 +3,18 @@ import SwiftUI
 /// Collects the partner's pairing code until `currentCouple` is set by `AppStateManager`.
 struct PairingView: View {
     @Environment(AppStateManager.self) private var state
+    @Environment(SubscriptionManager.self) private var subscription
     @Environment(\.dismiss) private var dismiss
     @AppStorage("hasSkippedPairing") private var hasSkippedPairing = false
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
+    @AppStorage(OnboardingFlowStorage.postAuthCreatorFunnel) private var postAuthCreatorFunnel = false
+    @AppStorage(OnboardingFlowStorage.isInvitedPartner) private var persistedInvitedPartner = false
 
     @State private var partnerCode = ""
     @State private var isCopied = false
     @State private var errorMessage: String?
     @State private var isLinking = false
+    @State private var isSkipping = false
 
     var myCode: String {
         state.currentUser?.pairingCode ?? "000-000"
@@ -120,17 +125,19 @@ struct PairingView: View {
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
 
-                    Button(action: {
-                        withAnimation(.smooth) {
-                            hasSkippedPairing = true
-                            dismiss()
+                    Button(action: { Task { await handleSkipForNow() } }) {
+                        Group {
+                            if isSkipping {
+                                ProgressView()
+                            } else {
+                                Text("Skip for now")
+                            }
                         }
-                    }) {
-                        Text("Skip for now")
-                            .font(.system(size: 16, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .padding(.vertical, 8)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 8)
                     }
+                    .disabled(isSkipping)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
@@ -144,6 +151,31 @@ struct PairingView: View {
     }
 
     // MARK: - Actions
+
+    /// Routes to home if premium, or resumes creator onboarding at the map step.
+    private func handleSkipForNow() async {
+        isSkipping = true
+        defer { isSkipping = false }
+
+        await subscription.refresh()
+        await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: state)
+
+        await MainActor.run {
+            withAnimation(.smooth) {
+                hasSkippedPairing = true
+                persistedInvitedPartner = false
+
+                if subscription.isPro {
+                    // Path B: already premium — go straight to home.
+                } else {
+                    // Path A: resume creator funnel from the map demo.
+                    postAuthCreatorFunnel = true
+                    hasCompletedOnboarding = false
+                }
+                dismiss()
+            }
+        }
+    }
 
     private func copyCodeToClipboard() {
         UIPasteboard.general.string = myCode

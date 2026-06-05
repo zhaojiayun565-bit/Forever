@@ -2,6 +2,9 @@ import SwiftUI
 
 /// Collects the partner's pairing code until `currentCouple` is set by `AppStateManager`.
 struct PairingView: View {
+    /// When `false`, forces full layout (Settings/Home). When `nil`, reads AppStorage.
+    var usesInviteEntryLayout: Bool? = nil
+
     @Environment(AppStateManager.self) private var state
     @Environment(SubscriptionManager.self) private var subscription
     @Environment(\.dismiss) private var dismiss
@@ -9,12 +12,17 @@ struct PairingView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @AppStorage(OnboardingFlowStorage.postAuthCreatorFunnel) private var postAuthCreatorFunnel = false
     @AppStorage(OnboardingFlowStorage.isInvitedPartner) private var persistedInvitedPartner = false
+    @AppStorage(OnboardingFlowStorage.invitePairingEntryOnly) private var invitePairingEntryOnly = false
 
     @State private var partnerCode = ""
     @State private var isCopied = false
     @State private var errorMessage: String?
     @State private var isLinking = false
     @State private var isSkipping = false
+
+    private var showInviteEntryOnly: Bool {
+        usesInviteEntryLayout ?? invitePairingEntryOnly
+    }
 
     var myCode: String {
         state.currentUser?.pairingCode ?? "000-000"
@@ -23,127 +31,150 @@ struct PairingView: View {
     var body: some View {
         VStack(spacing: 0) {
             Text("Connect with your other half")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .font(ForeverFont.header(size: 28, relativeTo: .title))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
                 .padding(.top, 44)
-                .padding(.bottom, 24)
+                .padding(.bottom, showInviteEntryOnly ? 8 : 24)
+
+            if showInviteEntryOnly {
+                Text("Enter the code your partner shared with you.")
+                    .font(ForeverFont.subheader(.subheadline))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 16)
+            }
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 20) {
-                    VStack(spacing: 16) {
-                        Button(action: copyCodeToClipboard) {
-                            HStack(spacing: 12) {
-                                Image(systemName: isCopied ? "checkmark" : "square.on.square")
-                                    .font(.system(size: 22, weight: .medium))
-                                    .foregroundStyle(isCopied ? .green : .pink)
-                                    .contentTransition(.symbolEffect(.replace))
-
-                                Text(myCode)
-                                    .font(.system(size: 36, weight: .bold, design: .rounded))
-                                    .tracking(2)
-                                    .foregroundStyle(.primary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-
-                        ShareLink(item: "Let's connect on Forever! My pairing code is \(myCode)") {
-                            Text("Share code with partner")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.primary)
-                                .foregroundStyle(Color(.systemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
-                        .buttonStyle(ScaleButtonStyle())
+                    if !showInviteEntryOnly {
+                        shareMyCodeSection
+                        orDivider
                     }
-                    .padding(24)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-
-                    HStack(spacing: 16) {
-                        Rectangle()
-                            .fill(Color.secondary.opacity(0.2))
-                            .frame(height: 1)
-                        Text("OR")
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        Rectangle()
-                            .fill(Color.secondary.opacity(0.2))
-                            .frame(height: 1)
-                    }
-                    .padding(.horizontal, 24)
-
-                    VStack(spacing: 16) {
-                        Text("Enter your partner's code")
-                            .font(.system(size: 18, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.primary)
-
-                        TextField("Enter the code", text: $partnerCode)
-                            .font(.headline)
-                            .textContentType(.oneTimeCode)
-                            .textInputAutocapitalization(.characters)
-                            .multilineTextAlignment(.center)
-                            .keyboardType(.numberPad)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color(.tertiarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
-                            )
-
-                        if let errorMessage {
-                            Text(errorMessage)
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                        }
-
-                        Button(action: linkPhones) {
-                            Group {
-                                if isLinking {
-                                    ProgressView()
-                                        .tint(isLinkEnabled ? .white : .secondary)
-                                } else {
-                                    Text("Link phones")
-                                }
-                            }
-                            .font(.headline)
-                            .foregroundStyle(isLinkEnabled ? .white : .secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(isLinkEnabled ? Color.pink : Color.secondary.opacity(0.2))
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .animation(.smooth(duration: 0.2), value: isLinkEnabled)
-                        }
-                        .disabled(!isLinkEnabled || isLinking)
-                        .buttonStyle(ScaleButtonStyle())
-                    }
-                    .padding(24)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-
-                    Button(action: { Task { await handleSkipForNow() } }) {
-                        Group {
-                            if isSkipping {
-                                ProgressView()
-                            } else {
-                                Text("Skip for now")
-                            }
-                        }
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 8)
-                    }
-                    .disabled(isSkipping)
+                    enterPartnerCodeSection
+                    skipButton
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }
         }
         .background(Color(.systemBackground).ignoresSafeArea())
+    }
+
+    private var shareMyCodeSection: some View {
+        VStack(spacing: 16) {
+            Button(action: copyCodeToClipboard) {
+                HStack(spacing: 12) {
+                    Image(systemName: isCopied ? "checkmark" : "square.on.square")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(isCopied ? .green : .pink)
+                        .contentTransition(.symbolEffect(.replace))
+
+                    Text(myCode)
+                        .font(ForeverFont.header(size: 36, relativeTo: .largeTitle))
+                        .tracking(2)
+                        .foregroundStyle(.primary)
+                }
+            }
+            .buttonStyle(.plain)
+
+            ShareLink(item: "Let's connect on Forever! My pairing code is \(myCode)") {
+                Text("Share code with partner")
+                    .font(ForeverFont.cta(.headline))
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.primary)
+                    .foregroundStyle(Color(.systemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(ScaleButtonStyle())
+        }
+        .padding(24)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+    }
+
+    private var orDivider: some View {
+        HStack(spacing: 16) {
+            Rectangle()
+                .fill(Color.secondary.opacity(0.2))
+                .frame(height: 1)
+            Text("OR")
+                .font(ForeverFont.subheader(size: 14, relativeTo: .caption))
+                .foregroundStyle(.secondary)
+            Rectangle()
+                .fill(Color.secondary.opacity(0.2))
+                .frame(height: 1)
+        }
+        .padding(.horizontal, 24)
+    }
+
+    private var enterPartnerCodeSection: some View {
+        VStack(spacing: 16) {
+            Text("Enter your partner's code")
+                .font(ForeverFont.header(size: 18, relativeTo: .headline))
+
+            TextField("Enter the code", text: $partnerCode)
+                .font(ForeverFont.body(.headline))
+                .textContentType(.oneTimeCode)
+                .textInputAutocapitalization(.characters)
+                .multilineTextAlignment(.center)
+                .keyboardType(.numberPad)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color(.tertiarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+                )
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(ForeverFont.footnote())
+                    .foregroundStyle(.red)
+            }
+
+            Button(action: linkPhones) {
+                Group {
+                    if isLinking {
+                        ProgressView()
+                            .tint(isLinkEnabled ? .white : .secondary)
+                    } else {
+                        Text("Link phones")
+                    }
+                }
+                .font(ForeverFont.cta(.headline))
+                .foregroundStyle(isLinkEnabled ? .white : .secondary)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(isLinkEnabled ? Color.pink : Color.secondary.opacity(0.2))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .animation(.smooth(duration: 0.2), value: isLinkEnabled)
+            }
+            .disabled(!isLinkEnabled || isLinking)
+            .buttonStyle(ScaleButtonStyle())
+        }
+        .padding(24)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+    }
+
+    private var skipButton: some View {
+        Button(action: { Task { await handleSkipForNow() } }) {
+            Group {
+                if isSkipping {
+                    ProgressView()
+                } else {
+                    Text("Skip for now")
+                }
+            }
+            .font(ForeverFont.body(size: 16, relativeTo: .callout))
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 8)
+        }
+        .disabled(isSkipping)
     }
 
     private var isLinkEnabled: Bool {
@@ -164,6 +195,7 @@ struct PairingView: View {
             withAnimation(.smooth) {
                 hasSkippedPairing = true
                 persistedInvitedPartner = false
+                invitePairingEntryOnly = false
 
                 if subscription.isPro {
                     // Path B: already premium — go straight to home.
@@ -201,6 +233,7 @@ struct PairingView: View {
             defer { isLinking = false }
             do {
                 try await state.linkWithPartner(code: partnerCode)
+                invitePairingEntryOnly = false
                 dismiss()
             } catch {
                 errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription

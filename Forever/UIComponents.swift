@@ -35,7 +35,7 @@ struct OnboardingContinueButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.headline)
+                .font(ForeverFont.cta(.headline))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding()
@@ -62,11 +62,11 @@ struct PairingCardView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Connect Partner")
-                        .font(.headline)
+                        .font(ForeverFont.header(.headline))
                         .foregroundStyle(.primary)
 
                     Text("Enjoy the full app experience together")
-                        .font(.subheadline)
+                        .font(ForeverFont.subheader(.subheadline))
                         .foregroundStyle(.secondary)
                 }
 
@@ -141,7 +141,7 @@ struct BouncingTooltip: View {
     var body: some View {
         VStack(spacing: 0) {
             Text(text)
-                .font(.subheadline.weight(.semibold))
+                .font(ForeverFont.subheader(.subheadline))
                 .foregroundStyle(accentColor)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 16)
@@ -194,7 +194,7 @@ struct MemoryMapPinLabel: View {
 
             if let displayNote {
                 Text(displayNote)
-                    .font(.system(.caption, design: .rounded).weight(.bold))
+                    .font(ForeverFont.bold(.caption))
                     .lineLimit(1)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)

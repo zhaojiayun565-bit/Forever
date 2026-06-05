@@ -17,6 +17,8 @@ struct ForeverApp: App {
     @State private var appState = AppStateManager()
 
     init() {
+        ForeverFont.configureGlobalAppearance()
+        ForeverFont.verifyFontsLoaded()
         SubscriptionManager.configure()
         let cache = ImageCache.default
         cache.memoryStorage.config.totalCostLimit = 50 * 1024 * 1024
@@ -27,6 +29,7 @@ struct ForeverApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(\.font, ForeverFont.body(.body))
                 .environment(appState)
                 .environment(SubscriptionManager.shared)
                 .task {

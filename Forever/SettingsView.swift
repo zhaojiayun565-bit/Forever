@@ -20,6 +20,7 @@ private enum DistanceUnitOption: String, CaseIterable {
 struct SettingsView: View {
     @Environment(AppStateManager.self) private var state
     @Environment(SubscriptionManager.self) private var subscription
+    private var ambientData = AmbientDataManager.shared
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @State private var displayName = ""
     @State private var anniversary = Date()
@@ -81,7 +82,7 @@ struct SettingsView: View {
 
                     if let avatarError {
                         Text(avatarError)
-                            .font(.caption)
+                            .font(ForeverFont.caption())
                             .foregroundStyle(.red)
                             .frame(maxWidth: .infinity, alignment: .center)
                             .listRowBackground(Color.clear)
@@ -116,7 +117,7 @@ struct SettingsView: View {
                                 ProgressView()
                             } else {
                                 Text("Save Details")
-                                    .fontWeight(.bold)
+                                    .font(ForeverFont.cta(.headline))
                             }
                             Spacer()
                         }
@@ -130,7 +131,7 @@ struct SettingsView: View {
                             .foregroundStyle(.pink)
                         if let expiration = subscription.activeProExpirationDate {
                             Text("Renews \(expiration.formatted(date: .abbreviated, time: .omitted))")
-                                .font(.caption)
+                                .font(ForeverFont.caption())
                                 .foregroundStyle(.secondary)
                         }
                         Button("Manage Subscription") {
@@ -138,12 +139,12 @@ struct SettingsView: View {
                         }
                     } else {
                         Text("Unlock unlimited memories, widgets, and more.")
-                            .font(.subheadline)
+                            .font(ForeverFont.subheader(.subheadline))
                             .foregroundStyle(.secondary)
                         Button("Upgrade to Pro") {
                             showPaywall = true
                         }
-                        .fontWeight(.semibold)
+                        .font(ForeverFont.cta(.subheadline))
                     }
 
                     Button("Restore Purchases") {
@@ -165,6 +166,27 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.menu)
+                }
+
+                Section("Permissions") {
+                    Button {
+                        // Notifications action wired later.
+                    } label: {
+                        permissionRow(
+                            title: "Notifications",
+                            systemImage: "bell.fill"
+                        )
+                    }
+
+                    Button {
+                        ambientData.handleLocationPermissionTap()
+                    } label: {
+                        permissionRow(
+                            title: "Location Permission",
+                            systemImage: "location.fill",
+                            status: ambientData.locationPermissionStatusLabel
+                        )
+                    }
                 }
 
                 Section("About") {
@@ -248,7 +270,7 @@ struct SettingsView: View {
                 }
             }
             .fullScreenCover(isPresented: $showPairingSheet) {
-                PairingView()
+                PairingView(usesInviteEntryLayout: false)
                     .environment(state)
             }
             .foreverPaywall(isPresented: $showPaywall)
@@ -264,6 +286,26 @@ struct SettingsView: View {
             .task {
                 await subscription.refresh()
             }
+        }
+    }
+
+    /// Shared layout for permission rows in the Me tab.
+    private func permissionRow(
+        title: String,
+        systemImage: String,
+        status: String? = nil
+    ) -> some View {
+        HStack {
+            Label(title, systemImage: systemImage)
+            Spacer()
+            if let status {
+                Text(status)
+                    .font(ForeverFont.caption())
+                    .foregroundStyle(.secondary)
+            }
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
         }
     }
 

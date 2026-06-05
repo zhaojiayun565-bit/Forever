@@ -9,12 +9,12 @@ struct OnboardingInvestmentView: View {
         VStack(spacing: 0) {
             VStack(spacing: 16) {
                 Text("Invest in your forever")
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .font(ForeverFont.header(size: 36, relativeTo: .largeTitle))
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.center)
 
                 Text("Watch your connection grow stronger over time, instead of drifting apart.")
-                    .font(.title3)
+                    .font(ForeverFont.subheader(.title3))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
@@ -173,7 +173,7 @@ struct RelationshipGraphView: View {
         ZStack(alignment: .topLeading) {
             ForEach(0 ..< xLabels.count, id: \.self) { index in
                 Text(xLabels[index])
-                    .font(.caption)
+                    .font(ForeverFont.caption())
                     .foregroundStyle(.secondary)
                     .position(
                         x: chartRect.minX + chartRect.width * xFractions[index],
@@ -182,19 +182,19 @@ struct RelationshipGraphView: View {
             }
 
             Text(warningLabels[0])
-                .font(.caption.weight(.semibold))
+                .font(ForeverFont.bold(.caption))
                 .foregroundStyle(palette.warningLabel)
                 .position(x: warningAnchors[1].x, y: warningAnchors[1].y - 22)
 
             let boredomX = (warningAnchors[1].x + warningAnchors[2].x) / 2
             let boredomY = warningAnchors[1].y + (warningAnchors[2].y - warningAnchors[1].y) * 0.45 - 22
             Text(warningLabels[1])
-                .font(.caption.weight(.semibold))
+                .font(ForeverFont.bold(.caption))
                 .foregroundStyle(palette.warningLabel)
                 .position(x: boredomX, y: boredomY)
 
             Text(warningLabels[2])
-                .font(.caption.weight(.semibold))
+                .font(ForeverFont.bold(.caption))
                 .foregroundStyle(palette.warningLabel)
                 .position(x: warningAnchors[3].x, y: warningAnchors[3].y - 22)
 
@@ -206,10 +206,10 @@ struct RelationshipGraphView: View {
                 Text("with ")
                     .foregroundStyle(.secondary)
                 Text("forever.")
-                    .fontWeight(.bold)
+                    .font(ForeverFont.bold(.caption))
                     .foregroundStyle(.primary)
             }
-            .font(.caption)
+            .font(ForeverFont.caption())
             .position(foreverPoint)
         }
     }

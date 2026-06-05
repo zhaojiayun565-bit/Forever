@@ -52,12 +52,14 @@ struct Couple: Codable, Identifiable, Hashable {
     let id: UUID
     let user1Id: UUID
     let user2Id: UUID
+    var boardWallpaperUrl: String?
     let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
         case id
         case user1Id = "user1_id"
         case user2Id = "user2_id"
+        case boardWallpaperUrl = "board_wallpaper_url"
         case createdAt = "created_at"
     }
 }
@@ -115,6 +117,7 @@ extension Couple {
         id: UUID(),
         user1Id: UUID(),
         user2Id: UUID(),
+        boardWallpaperUrl: nil,
         createdAt: Date()
     )
 }

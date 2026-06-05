@@ -34,10 +34,10 @@ struct LocationSearchBar: View {
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(completion.title)
-                                        .font(.headline)
+                                        .font(ForeverFont.header(.headline))
                                         .foregroundStyle(.primary)
                                     Text(completion.subtitle)
-                                        .font(.subheadline)
+                                        .font(ForeverFont.subheader(.subheadline))
                                         .foregroundStyle(.secondary)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -367,14 +367,14 @@ final class SupabaseManager: Sendable {
     }
 
     func uploadNoteImage(data: Data) async throws -> String {
-        let path = "\(UUID().uuidString).png"
+        let path = "\(UUID().uuidString).jpg"
 
         try await client.storage
             .from(DB.notesBucket)
             .upload(
                 path,
                 data: data,
-                options: FileOptions(contentType: "image/png")
+                options: FileOptions(contentType: "image/jpeg")
             )
 
         let publicUrl = try client.storage.from(DB.notesBucket).getPublicURL(path: path)
@@ -486,6 +486,38 @@ final class SupabaseManager: Sendable {
     }
 
     // MARK: - Drawing Board
+
+    /// Fetches a couple row by id (includes shared board wallpaper URL).
+    func fetchCouple(id: UUID) async throws -> Couple {
+        try await client.from(DB.couples)
+            .select()
+            .eq("id", value: id)
+            .single()
+            .execute()
+            .value
+    }
+
+    /// Uploads the shared board wallpaper for a couple (upserts at a stable path).
+    func uploadBoardWallpaper(data: Data, coupleId: UUID) async throws -> String {
+        let path = "wallpaper/\(coupleId.uuidString).jpg"
+        try await client.storage
+            .from(DB.notesBucket)
+            .upload(
+                path,
+                data: data,
+                options: FileOptions(contentType: "image/jpeg", upsert: true)
+            )
+        let publicUrl = try client.storage.from(DB.notesBucket).getPublicURL(path: path)
+        return publicUrl.absoluteString
+    }
+
+    /// Persists the shared board wallpaper URL on the couple row.
+    func updateBoardWallpaperUrl(coupleId: UUID, url: String) async throws {
+        try await client.from(DB.couples)
+            .update(BoardWallpaperUpdate(board_wallpaper_url: url))
+            .eq("id", value: coupleId)
+            .execute()
+    }
 
     /// Loads all persisted strokes for a couple's board, oldest first.
     func fetchStrokes(coupleId: UUID) async throws -> [DrawStroke] {
@@ -747,6 +779,10 @@ private nonisolated struct AmbientDataUpdate: Encodable, Sendable {
 
 private nonisolated struct NoteUpdateDTO: Encodable, Sendable {
     let latest_note_url: String
+}
+
+private nonisolated struct BoardWallpaperUpdate: Encodable, Sendable {
+    let board_wallpaper_url: String
 }
 
 private nonisolated struct DeviceTokenUpdateDTO: Encodable, Sendable {

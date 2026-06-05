@@ -32,11 +32,17 @@ enum OnboardingIntroTheme {
 enum OnboardingFlowStorage {
     static let postAuthCreatorFunnel = "postAuthCreatorFunnel"
     static let isInvitedPartner = "isInvitedPartner"
+    static let invitePairingEntryOnly = "invitePairingEntryOnly"
+
+    /// Clears invite-only pairing layout (e.g. after unpair).
+    static func clearInvitePairingEntryOnly() {
+        UserDefaults.standard.set(false, forKey: invitePairingEntryOnly)
+    }
 }
 
 enum OnboardingLayout {
     static let horizontalPadding: CGFloat = 40
-    static let titleFont = Font.system(size: 36, weight: .bold, design: .rounded)
+    static let titleFont = ForeverFont.header(size: 36, relativeTo: .largeTitle)
     static let bodyStackSpacing: CGFloat = 30
     static let selectionStackSpacing: CGFloat = 24
     static let selectionRowSpacing: CGFloat = 14
@@ -81,6 +87,7 @@ struct OnboardingView: View {
     @State private var isInvitedPartner = false
     @AppStorage(OnboardingFlowStorage.isInvitedPartner) private var persistedInvitedPartner = false
     @AppStorage(OnboardingFlowStorage.postAuthCreatorFunnel) private var postAuthCreatorFunnel = false
+    @AppStorage(OnboardingFlowStorage.invitePairingEntryOnly) private var invitePairingEntryOnly = false
     @State private var isPostAuthCreatorFunnel = false
 
     private var isInvitedFlow: Bool {
@@ -111,11 +118,32 @@ struct OnboardingView: View {
 
     var body: some View {
         NavigationStack {
-            onboardingContent
+            onboardingStepStack
+        }
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: currentStep)
+        .onAppear {
+            applyPendingFlowFlags()
+        }
+        .onChange(of: currentStep) { _, step in
+            if step == .features {
+                featureTab = 0
+            }
+        }
+        .alert("Could Not Save Memory", isPresented: memoryErrorPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(onboardingMemoryStageError ?? "")
         }
     }
 
-    private var onboardingContent: some View {
+    private var memoryErrorPresented: Binding<Bool> {
+        Binding(
+            get: { onboardingMemoryStageError != nil },
+            set: { if !$0 { onboardingMemoryStageError = nil } }
+        )
+    }
+
+    private var onboardingStepStack: some View {
         ZStack {
             if isIntroPhase {
                 OnboardingIntroTheme.background
@@ -257,8 +285,8 @@ struct OnboardingView: View {
                         action: advance,
                         onAuthenticated: syncOnboardingMemoryAfterAuth,
                         onInvitedPartnerComplete: completeInvitedPartnerOnboarding,
-                        onInviteBack: isInvitedFlow ? returnFromInviteLogin : nil,
-                        onSkipAuthenticated: goToPaywall
+                        onInviteBack: isInvitedFlow ? { returnFromInviteLogin() } : nil,
+                        onSkipAuthenticated: { goToPaywall() }
                     )
                     .transition(standardStepTransition)
                 case .investment:
@@ -273,26 +301,6 @@ struct OnboardingView: View {
 
                 Spacer()
             }
-        }
-        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: currentStep)
-        .onAppear {
-            applyPendingFlowFlags()
-        }
-        .onChange(of: currentStep) { _, step in
-            if step == .features {
-                featureTab = 0
-            }
-        }
-        .alert(
-            "Could Not Save Memory",
-            isPresented: Binding(
-                get: { onboardingMemoryStageError != nil },
-                set: { if !$0 { onboardingMemoryStageError = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(onboardingMemoryStageError ?? "")
         }
     }
 
@@ -359,6 +367,7 @@ struct OnboardingView: View {
     private func completeInvitedPartnerOnboarding() {
         persistedInvitedPartner = false
         isInvitedPartner = false
+        invitePairingEntryOnly = true
         withAnimation(.easeInOut(duration: 0.5)) {
             hasCompletedOnboarding = true
         }
@@ -447,7 +456,7 @@ struct IntroPrimaryButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.headline)
+                .font(ForeverFont.cta(.headline))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding()
@@ -480,7 +489,7 @@ struct IntroWelcomeView: View {
 
             Button(action: onInviteCode) {
                 Text("I have an invite code")
-                    .font(.headline)
+                    .font(ForeverFont.cta(.headline))
                     .foregroundStyle(OnboardingIntroTheme.accent)
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -517,7 +526,7 @@ struct IntroPromptStepView: View {
 
             if let subtitle {
                 Text(subtitle)
-                    .font(.title3)
+                    .font(ForeverFont.subheader(.title3))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, OnboardingLayout.horizontalPadding)
@@ -542,11 +551,11 @@ struct NameInputView: View {
     var body: some View {
         VStack(spacing: 30) {
             Text(title)
-                .font(.system(size: 36, weight: .bold, design: .rounded))
+                .font(ForeverFont.header(size: 36, relativeTo: .largeTitle))
                 .multilineTextAlignment(.center)
 
             TextField("First Name", text: $name)
-                .font(.title2)
+                .font(ForeverFont.body(.title2))
                 .multilineTextAlignment(.center)
                 .padding()
                 .background(Color(UIColor.secondarySystemBackground))
@@ -560,7 +569,7 @@ struct NameInputView: View {
 
             Button(action: action) {
                 Text("Continue")
-                    .font(.headline)
+                    .font(ForeverFont.cta(.headline))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -595,7 +604,7 @@ struct IntroNameInputView: View {
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
 
             TextField("First Name", text: $name)
-                .font(.title2)
+                .font(ForeverFont.body(.title2))
                 .multilineTextAlignment(.center)
                 .padding()
                 .background(Color.white.opacity(0.95))
@@ -684,7 +693,7 @@ struct IntroAnniversaryInsightView: View {
                     .multilineTextAlignment(.center)
 
                 Text("Do you have just 5 minutes a day to stay connected?")
-                    .font(.title3)
+                    .font(ForeverFont.subheader(.title3))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -712,7 +721,7 @@ struct IntroRelationshipGoalsView: View {
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
 
             Text("Choose up to three")
-                .font(.subheadline.weight(.medium))
+                .font(ForeverFont.subheader(.subheadline))
                 .foregroundStyle(.secondary)
 
             ScrollView(showsIndicators: false) {
@@ -904,7 +913,7 @@ struct IntroMemoryCelebrationView: View {
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
 
             Text("Your map is officially started. Your partner is going to love this.")
-                .font(.title3)
+                .font(ForeverFont.subheader(.title3))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
@@ -940,7 +949,7 @@ struct IntroMemoryCelebrationView: View {
                     .frame(width: 180, height: 140)
                     .overlay {
                         Image(systemName: "map")
-                            .font(.title)
+                            .font(ForeverFont.header(.title))
                             .foregroundStyle(.secondary)
                     }
             }
@@ -964,7 +973,7 @@ struct IntroReviewAskView: View {
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
 
             Text("It would mean the world to us if you left a quick rating. It helps more couples find Forever.")
-                .font(.title3)
+                .font(ForeverFont.subheader(.title3))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
@@ -1034,7 +1043,7 @@ struct IntentSelectionView: View {
     var body: some View {
         VStack(spacing: 24) {
             Text("What brings you here?")
-                .font(.system(size: 36, weight: .bold, design: .rounded))
+                .font(ForeverFont.header(size: 36, relativeTo: .largeTitle))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
 
@@ -1047,7 +1056,7 @@ struct IntentSelectionView: View {
                             }
                         } label: {
                             Text(option.text)
-                                .font(.headline)
+                                .font(ForeverFont.header(.headline))
                                 .foregroundStyle(.primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 24)
@@ -1079,7 +1088,7 @@ struct IntentSelectionView: View {
                 action()
             } label: {
                 Text("Continue")
-                    .font(.headline)
+                    .font(ForeverFont.cta(.headline))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -1153,12 +1162,12 @@ struct FeaturePage: View {
                 .padding(.bottom, 20)
 
             Text(title)
-                .font(usesIntroStyle ? OnboardingLayout.titleFont : .system(size: 32, weight: .bold, design: .rounded))
+                .font(usesIntroStyle ? OnboardingLayout.titleFont : ForeverFont.header(size: 32, relativeTo: .title))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, usesIntroStyle ? OnboardingLayout.horizontalPadding : 0)
 
             Text(description)
-                .font(.title3)
+                .font(ForeverFont.subheader(.title3))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
@@ -1172,7 +1181,7 @@ struct FeaturePage: View {
                 } else {
                     Button(action: buttonAction) {
                         Text(buttonTitle)
-                            .font(.headline)
+                            .font(ForeverFont.cta(.headline))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding()
@@ -1230,10 +1239,10 @@ struct OnboardingLoginView: View {
                 .padding(.bottom, 20)
             
             Text("Save Your Profile")
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(ForeverFont.header(size: 32, relativeTo: .title))
             
             Text("Create your account securely so you and your partner can sync your memories.")
-                .font(.title3)
+                .font(ForeverFont.subheader(.title3))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)

@@ -100,7 +100,7 @@ struct AddMemoryView: View {
                     Button("Save") {
                         Task { await saveMemory() }
                     }
-                    .fontWeight(.bold)
+                    .font(ForeverFont.cta(.body))
                     .disabled(selectedImages.isEmpty || coordinate == nil || isSaving)
                 }
             }

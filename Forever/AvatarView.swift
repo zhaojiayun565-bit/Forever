@@ -39,7 +39,7 @@ struct AvatarView: View {
             Circle()
                 .fill(Color(.systemGray3))
             Text(initial)
-                .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
+                .font(ForeverFont.bold(size: size * 0.42, relativeTo: .headline))
                 .foregroundStyle(.white)
         }
     }

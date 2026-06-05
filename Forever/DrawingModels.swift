@@ -36,11 +36,18 @@ struct BoardControlPayload: Codable, Sendable {
     let strokeId: UUID?
 }
 
+/// Payload for a shared board wallpaper change.
+struct WallpaperPayload: Codable, Sendable {
+    let authorId: UUID
+    let url: String
+}
+
 /// Broadcast event names used on the drawing-board channel.
 enum BoardEvent {
     static let stroke = "stroke"
     static let undo = "undo"
     static let clear = "clear"
+    static let wallpaper = "wallpaper"
 }
 
 // MARK: - Supabase DTOs

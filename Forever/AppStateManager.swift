@@ -541,6 +541,7 @@ final class AppStateManager {
             WidgetCenter.shared.reloadAllTimelines()
             subscribeToCoupleLink()
             await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
+            OnboardingFlowStorage.clearInvitePairingEntryOnly()
 
             print("✅ Successfully unpaired. UI should now route to PairingView.")
         } catch {

@@ -170,7 +170,7 @@ struct ForeverCustomPaywallFlow: View {
                         Button("Continue without Pro") {
                             onSkip()
                         }
-                        .font(.footnote.weight(.medium))
+                        .font(ForeverFont.footnote())
                         .foregroundStyle(PaywallTheme.footerLink(for: colorScheme))
                         .padding(.top, 8)
                         .padding(.bottom, 12)
@@ -315,7 +315,7 @@ private struct PaywallOfferStepView: View {
             Spacer(minLength: 16)
 
             Text("We want you to try Forever for free")
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(ForeverFont.header(size: 32, relativeTo: .title))
                 .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
@@ -358,13 +358,13 @@ private struct PaywallReminderStepView: View {
             Spacer(minLength: 16)
 
             Text("We'll remind you before your free trial ends")
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(ForeverFont.header(size: 32, relativeTo: .title))
                 .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
 
             Text("Turn on notifications for Forever to get the reminder")
-                .font(.title3)
+                .font(ForeverFont.subheader(.title3))
                 .foregroundStyle(PaywallTheme.secondaryText(for: colorScheme))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
@@ -473,7 +473,7 @@ private struct PaywallPartnerSubheadHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Your partner doesn't pay anything")
-                .font(.system(size: PaywallStep3Metrics.subheadSize, weight: .semibold))
+                .font(ForeverFont.subheader(size: PaywallStep3Metrics.subheadSize, relativeTo: .subheadline))
                 .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
 
             Capsule()
@@ -491,7 +491,7 @@ private struct PaywallTrialHeadline: View {
     var body: some View {
         VStack(spacing: 0) {
             Text("Start your \(trialDays)-day")
-                .font(.system(size: PaywallStep3Metrics.headlineSize, weight: .bold, design: .rounded))
+                .font(ForeverFont.header(size: PaywallStep3Metrics.headlineSize, relativeTo: .title))
                 .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
 
             secondLine
@@ -501,7 +501,7 @@ private struct PaywallTrialHeadline: View {
 
     @ViewBuilder
     private var secondLine: some View {
-        let font = Font.system(size: PaywallStep3Metrics.headlineSize, weight: .bold, design: .rounded)
+        let font = ForeverFont.header(size: PaywallStep3Metrics.headlineSize, relativeTo: .title)
         if colorScheme == .dark {
             Text("FREE trial to continue")
                 .font(font)
@@ -563,7 +563,7 @@ private struct PaywallTrialTimeline: View {
         HStack(alignment: .top, spacing: PaywallStep3Metrics.timelineIconToTextSpacing) {
             VStack(spacing: 0) {
                 Text(emoji)
-                    .font(.system(size: 16))
+                    .font(ForeverFont.body(size: 16, relativeTo: .callout))
                     .frame(width: PaywallStep3Metrics.timelineCircleSize, height: PaywallStep3Metrics.timelineCircleSize)
                     .background(isBilling ? PaywallTheme.accent : PaywallTheme.timelineStepMuted)
                     .clipShape(Circle())
@@ -580,11 +580,11 @@ private struct PaywallTrialTimeline: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.system(size: PaywallStep3Metrics.timelineTitleSize, weight: .bold))
+                    .font(ForeverFont.bold(size: PaywallStep3Metrics.timelineTitleSize, relativeTo: .headline))
                     .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
 
                 Text(body)
-                    .font(.system(size: PaywallStep3Metrics.timelineBodySize))
+                    .font(ForeverFont.body(size: PaywallStep3Metrics.timelineBodySize, relativeTo: .footnote))
                     .foregroundStyle(PaywallTheme.secondaryText(for: colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -635,7 +635,7 @@ private struct PaywallPlanBadge: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: PaywallStep3Metrics.badgeSize, weight: .bold))
+            .font(ForeverFont.emphasis(size: PaywallStep3Metrics.badgeSize, relativeTo: .caption2))
             .foregroundStyle(PaywallTheme.freeTrialBadgeForeground(for: colorScheme))
             .padding(.horizontal, PaywallStep3Metrics.badgeHorizontalPadding)
             .padding(.vertical, PaywallStep3Metrics.badgeVerticalPadding)
@@ -657,12 +657,12 @@ private struct PaywallPlanCard: View {
             ZStack(alignment: .topTrailing) {
                 VStack(alignment: .leading, spacing: PaywallStep3Metrics.planCardInnerSpacing) {
                     Text(title)
-                        .font(.system(size: PaywallStep3Metrics.planTitleSize, weight: .semibold))
+                        .font(ForeverFont.bold(size: PaywallStep3Metrics.planTitleSize, relativeTo: .headline))
                         .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
                         .padding(.top, badge == nil ? 0 : 8)
 
                     Text(priceLabel)
-                        .font(.system(size: PaywallStep3Metrics.planPriceSize))
+                        .font(ForeverFont.body(size: PaywallStep3Metrics.planPriceSize, relativeTo: .subheadline))
                         .foregroundStyle(PaywallTheme.secondaryText(for: colorScheme))
 
                     Spacer(minLength: 0)
@@ -702,7 +702,7 @@ private struct PaywallPlanSelectionIndicator: View {
         Group {
             if isSelected {
                 Image(systemName: "checkmark")
-                    .font(.caption.weight(.bold))
+                    .font(ForeverFont.bold(.caption))
                     .foregroundStyle(.white)
                     .frame(width: 22, height: 22)
                     .background(PaywallTheme.accent)
@@ -740,7 +740,7 @@ private struct PaywallCTABlock: View {
 
             if let package {
                 Text(PaywallPricingFormatter.priceSubtitle(for: package))
-                    .font(.system(size: PaywallStep3Metrics.ctaSubtextSize))
+                    .font(ForeverFont.body(size: PaywallStep3Metrics.ctaSubtextSize, relativeTo: .footnote))
                     .foregroundStyle(PaywallTheme.ctaSubtext(for: colorScheme))
                     .multilineTextAlignment(.center)
             }
@@ -762,7 +762,7 @@ private struct PaywallTrustRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
 
             Text("No Payment Due Now")
-                .font(.system(size: labelSize, weight: .semibold))
+                .font(ForeverFont.bold(size: labelSize, relativeTo: .headline))
                 .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
         }
     }
@@ -777,7 +777,7 @@ struct PaywallPrimaryButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: fontSize, weight: .semibold))
+                .font(ForeverFont.cta(size: fontSize, relativeTo: .headline))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
@@ -805,7 +805,7 @@ private struct PaywallFooterLinks: View {
             Button("Policy", action: onPrivacy)
                 .disabled(RevenueCatConfiguration.privacyURL == nil)
         }
-        .font(.footnote)
+        .font(ForeverFont.footnote())
         .foregroundStyle(PaywallTheme.footerLink(for: colorScheme))
         .padding(.horizontal, 28)
         .padding(.bottom, 8)
@@ -820,7 +820,7 @@ private struct PaywallErrorBanner: View {
     var body: some View {
         HStack {
             Text(message)
-                .font(.footnote)
+                .font(ForeverFont.footnote())
                 .foregroundStyle(.primary)
             Spacer()
             Button(action: onDismiss) {

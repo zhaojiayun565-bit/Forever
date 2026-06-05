@@ -62,8 +62,9 @@ struct ArchiveView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(.quaternary)
             Text("No drawings yet")
-                .font(.system(.title2, design: .rounded).weight(.bold))
+                .font(ForeverFont.header(.title2))
             Text("Sent drawings from the board will appear here for both of you.")
+                .font(ForeverFont.body(.body))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -79,10 +80,10 @@ struct ArchiveView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(authorLabel(for: drawing))
-                    .font(.subheadline.weight(.semibold))
+                    .font(ForeverFont.subheader(.subheadline))
                     .foregroundStyle(.primary)
                 Text(drawing.createdAt, style: .relative)
-                    .font(.caption)
+                    .font(ForeverFont.caption())
                     .foregroundStyle(.secondary)
             }
         }

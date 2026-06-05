@@ -62,10 +62,10 @@ struct HomeDashboardView: View {
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Cherished Texts")
-                                    .font(.headline)
+                                    .font(ForeverFont.header(.headline))
                                     .foregroundStyle(.primary)
                                 Text("Our favorite saved messages")
-                                    .font(.subheadline)
+                                    .font(ForeverFont.subheader(.subheadline))
                                     .foregroundStyle(.secondary)
                             }
 
@@ -97,10 +97,10 @@ struct HomeDashboardView: View {
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Drawing Board")
-                                    .font(.headline)
+                                    .font(ForeverFont.header(.headline))
                                     .foregroundStyle(.primary)
                                 Text("Doodle together on a shared lock screen")
-                                    .font(.subheadline)
+                                    .font(ForeverFont.subheader(.subheadline))
                                     .foregroundStyle(.secondary)
                             }
 
@@ -120,17 +120,17 @@ struct HomeDashboardView: View {
                     BubblyCard {
                         VStack(spacing: 8) {
                             Text("Distance Apart")
-                                .font(.subheadline.weight(.medium))
+                                .font(ForeverFont.subheader(.subheadline))
                                 .foregroundStyle(.secondary)
 
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
                                 Text(displayDistanceValue)
-                                    .font(.system(size: 52, weight: .black, design: .rounded))
+                                    .font(ForeverFont.header(size: 52, relativeTo: .largeTitle))
                                     .foregroundStyle(
                                         LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
                                     )
                                 Text(displayDistanceUnit)
-                                    .font(.system(.title3, design: .rounded).weight(.bold))
+                                    .font(ForeverFont.bold(.title3))
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -141,10 +141,11 @@ struct HomeDashboardView: View {
                     BubblyCard {
                         VStack(alignment: .leading, spacing: 16) {
                             Label("Lock Screen Message", systemImage: "lock.iphone")
-                                .font(.system(.headline, design: .rounded))
+                                .font(ForeverFont.header(.headline))
                             
                             HStack {
                                 TextField("Thinking of you...", text: $lockScreenMessage)
+                                    .font(ForeverFont.body(.body))
                                     .padding(14)
                                     .background(Color(UIColor.tertiarySystemGroupedBackground))
                                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -182,7 +183,7 @@ struct HomeDashboardView: View {
                 Text("Pair with your partner to unlock the Shared Drawing Board.")
             }
             .fullScreenCover(isPresented: $showPairingSheet) {
-                PairingView()
+                PairingView(usesInviteEntryLayout: false)
                     .environment(state)
             }
         }
@@ -224,11 +225,11 @@ struct DaysTogetherHeroCard: View {
             
             VStack(spacing: -2) {
                 Text("\(daysTogether)")
-                    .font(.system(size: 64, weight: .bold, design: .rounded))
+                    .font(ForeverFont.header(size: 64, relativeTo: .largeTitle))
                     .foregroundStyle(.white)
                 
                 Text("DAYS")
-                    .font(.subheadline.weight(.bold))
+                    .font(ForeverFont.bold(.subheadline))
                     .foregroundStyle(.gray)
                     .tracking(2)
             }

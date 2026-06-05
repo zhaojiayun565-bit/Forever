@@ -21,10 +21,10 @@ struct LoginView: View {
                     .shadow(color: .pink.opacity(0.3), radius: 20, x: 0, y: 10)
 
                 Text("Forever")
-                    .font(.system(size: 42, weight: .black, design: .rounded))
+                    .font(ForeverFont.header(size: 42, relativeTo: .largeTitle))
 
                 Text("Stay connected, no matter the distance.")
-                    .font(.system(.headline, design: .rounded))
+                    .font(ForeverFont.subheader(.headline))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
@@ -48,7 +48,7 @@ struct LoginView: View {
                     }
                 } label: {
                     Text(isLoading ? "Signing In..." : "Anonymous Test")
-                        .font(.system(.headline, design: .rounded))
+                        .font(ForeverFont.cta(.headline))
                         .foregroundStyle(.primary)
                         .frame(maxWidth: .infinity, minHeight: 56)
                         .background(Color.gray.opacity(0.2))

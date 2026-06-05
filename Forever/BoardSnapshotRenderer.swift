@@ -5,17 +5,33 @@ import UIKit
 enum BoardSnapshotRenderer {
     private static let renderWidth: CGFloat = 1024
 
-    /// Tight crop around ink only (transparent background) for the Partner Note widget.
-    static func widgetPNG(strokes: [DrawStroke]) -> Data? {
-        guard let bbox = paddedBoundingBox(for: strokes) else { return nil }
+    /// Centered-square flatten (wallpaper + strokes) matching the board's center area, for the
+    /// Partner Note widget. Strokes may be empty to send a background-only image.
+    static func widgetSquare(strokes: [DrawStroke], wallpaper: UIImage?, boardSize: CGSize) -> Data? {
+        guard boardSize.width > 0, boardSize.height > 0 else { return nil }
 
-        let cropWidth = bbox.maxX - bbox.minX
-        let cropHeight = bbox.maxY - bbox.minY
-        guard cropWidth > 0, cropHeight > 0 else { return nil }
+        let side = renderWidth
+        // Board height in width-normalized units; the center square spans the full width.
+        let aspect = boardSize.height / boardSize.width
+        // Top of the centered square in width-normalized units.
+        let offsetY = (aspect - 1) / 2
+        // Full board rect within the square render space; the square clips out the center.
+        let boardRect = CGRect(x: 0, y: -offsetY * side, width: side, height: side * aspect)
 
-        let size = CGSize(width: renderWidth, height: renderWidth * (cropHeight / cropWidth))
-        return render(strokes: strokes, size: size, scale: renderWidth, offset: bbox.origin) { _, _ in }
-            .pngData()
+        let image = render(
+            strokes: strokes,
+            size: CGSize(width: side, height: side),
+            scale: side,
+            offset: CGPoint(x: 0, y: offsetY),
+            opaque: true
+        ) { context, squareRect in
+            if let wallpaper {
+                drawAspectFill(wallpaper, in: boardRect, clipTo: squareRect, context: context)
+            } else {
+                drawDefaultGradient(in: boardRect, context: context)
+            }
+        }
+        return image.jpegData(compressionQuality: 0.88)
     }
 
     /// Full-board capture with wallpaper (or gradient fallback) for the shared archive.
@@ -35,26 +51,6 @@ enum BoardSnapshotRenderer {
         return image.jpegData(compressionQuality: 0.88)
     }
 
-    // MARK: - Bounding box
-
-    /// Normalized bounding box of all stroke points, padded by half the widest line.
-    private static func paddedBoundingBox(for strokes: [DrawStroke]) -> CGRect? {
-        let points = strokes.flatMap(\.points)
-        guard !points.isEmpty else { return nil }
-
-        let xs = points.map(\.x)
-        let ys = points.map(\.y)
-        let maxLineWidth = strokes.map(\.width).max() ?? 0
-        let pad = maxLineWidth / 2
-
-        let minX = max((xs.min() ?? 0) - pad, 0)
-        let minY = max((ys.min() ?? 0) - pad, 0)
-        let maxX = (xs.max() ?? 1) + pad
-        let maxY = (ys.max() ?? 1) + pad
-
-        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
-    }
-
     // MARK: - Core render
 
     private static func render(
@@ -62,10 +58,11 @@ enum BoardSnapshotRenderer {
         size: CGSize,
         scale: CGFloat,
         offset: CGPoint,
+        opaque: Bool = false,
         background: (CGContext, CGRect) -> Void
     ) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
-        format.opaque = false
+        format.opaque = opaque
         format.scale = 1
 
         return UIGraphicsImageRenderer(size: size, format: format).image { rendererContext in
@@ -104,8 +101,9 @@ enum BoardSnapshotRenderer {
         context.strokePath()
     }
 
-    /// Aspect-fills `image` into `rect`, matching the on-screen board background.
-    private static func drawAspectFill(_ image: UIImage, in rect: CGRect, context: CGContext) {
+    /// Aspect-fills `image` into `rect`, matching the on-screen board background. When `clipRect`
+    /// is provided the visible area is clipped to it (used to crop the center square of the board).
+    private static func drawAspectFill(_ image: UIImage, in rect: CGRect, clipTo clipRect: CGRect? = nil, context: CGContext) {
         guard let cg = image.cgImage else { return }
         let imageAspect = CGFloat(cg.width) / CGFloat(cg.height)
         let rectAspect = rect.width / rect.height
@@ -113,14 +111,15 @@ enum BoardSnapshotRenderer {
         var drawRect = rect
         if imageAspect > rectAspect {
             let scaledWidth = rect.height * imageAspect
-            drawRect = CGRect(x: rect.midX - scaledWidth / 2, y: 0, width: scaledWidth, height: rect.height)
+            drawRect = CGRect(x: rect.midX - scaledWidth / 2, y: rect.minY, width: scaledWidth, height: rect.height)
         } else {
             let scaledHeight = rect.width / imageAspect
-            drawRect = CGRect(x: 0, y: rect.midY - scaledHeight / 2, width: rect.width, height: scaledHeight)
+            drawRect = CGRect(x: rect.minX, y: rect.midY - scaledHeight / 2, width: rect.width, height: scaledHeight)
         }
         context.saveGState()
-        context.clip(to: rect)
-        context.draw(cg, in: drawRect)
+        context.clip(to: clipRect ?? rect)
+        // UIImage.draw respects UIKit's flipped renderer context; CGContext.draw would mirror the photo.
+        image.draw(in: drawRect)
         context.restoreGState()
     }
 

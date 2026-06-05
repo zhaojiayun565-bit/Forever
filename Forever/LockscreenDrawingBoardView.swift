@@ -11,20 +11,16 @@ struct LockscreenDrawingBoardView: View {
 
     @State private var board: DrawingBoardManager?
     @State private var penColor: Color = .white
-    @State private var wallpaper: UIImage?
     @State private var photoItem: PhotosPickerItem?
-    /// Drives the native status bar style and the chrome color scheme.
-    @State private var backgroundIsDark = true
     @State private var boardSize: CGSize = .zero
 
     private let penWidth: Double = 6
 
     var body: some View {
         ZStack {
-            BoardBackgroundView(wallpaper: wallpaper)
-
             if let board {
-                DrawingCanvasView(board: board, penColor: $penColor, penWidth: penWidth)
+                BoardBackgroundView(wallpaper: board.wallpaper)
+                DrawingCanvasView(board: board, penColor: $penColor, penWidth: penWidth, boardSize: $boardSize)
 
                 VStack(spacing: 8) {
                     LockscreenClockView()
@@ -39,12 +35,6 @@ struct LockscreenDrawingBoardView: View {
                     .tint(.primary)
             }
         }
-        .background {
-            GeometryReader { geo in
-                Color.clear.onAppear { boardSize = geo.size }
-                    .onChange(of: geo.size) { _, newSize in boardSize = newSize }
-            }
-        }
         .safeAreaInset(edge: .bottom) {
             if let board {
                 FloatingDrawingToolbar(
@@ -55,12 +45,12 @@ struct LockscreenDrawingBoardView: View {
                     onClose: { dismiss() },
                     onUndo: { Task { await board.undoLast() } },
                     onClear: { Task { await board.clearAll() } },
-                    onSend: { Task { await board.sendToWidget(boardSize: boardSize, wallpaper: wallpaper) } }
+                    onSend: { Task { await board.sendToWidget(boardSize: boardSize) } }
                 )
                 .padding(.bottom, 8)
             }
         }
-        .preferredColorScheme(backgroundIsDark ? .dark : .light)
+        .preferredColorScheme(usesDarkChrome ? .dark : .light)
         .task {
             let manager = DrawingBoardManager(
                 coupleId: appState.currentCouple?.id,
@@ -68,18 +58,14 @@ struct LockscreenDrawingBoardView: View {
                 partnerName: appState.partnerProfile?.displayName ?? String(localized: "Your partner")
             )
             board = manager
-            wallpaper = BoardWallpaperStore.load()
-            updateBackgroundAppearance()
             await manager.start()
         }
         .onChange(of: photoItem) { _, newItem in
-            guard let newItem else { return }
+            guard let newItem, let board else { return }
             Task {
                 if let data = try? await newItem.loadTransferable(type: Data.self),
                    let image = UIImage(data: data) {
-                    wallpaper = image
-                    BoardWallpaperStore.save(data)
-                    updateBackgroundAppearance()
+                    await board.setWallpaper(image)
                 }
             }
         }
@@ -89,12 +75,12 @@ struct LockscreenDrawingBoardView: View {
     }
 
     /// Picks a dark or light scheme from the wallpaper's top strip (default gradient is dark).
-    private func updateBackgroundAppearance() {
-        backgroundIsDark = wallpaper.map { !$0.topRegionIsLight() } ?? true
+    private var usesDarkChrome: Bool {
+        board?.wallpaper.map { !$0.topRegionIsLight() } ?? true
     }
 }
 
-// MARK: - Background (local-only wallpaper)
+// MARK: - Background
 
 private struct BoardBackgroundView: View {
     let wallpaper: UIImage?
@@ -125,6 +111,8 @@ private struct DrawingCanvasView: View {
     let board: DrawingBoardManager
     @Binding var penColor: Color
     let penWidth: Double
+    /// Reports the full-screen canvas size used to normalize strokes, so the widget crop matches.
+    @Binding var boardSize: CGSize
 
     @State private var currentStroke: DrawStroke?
 
@@ -144,6 +132,8 @@ private struct DrawingCanvasView: View {
             }
             .contentShape(Rectangle())
             .gesture(drawGesture(canvasWidth: canvasWidth))
+            .onAppear { boardSize = geo.size }
+            .onChange(of: geo.size) { _, newSize in boardSize = newSize }
         }
         .ignoresSafeArea()
     }
@@ -217,9 +207,9 @@ private struct LockscreenClockView: View {
             let now = context.date
             VStack(spacing: 4) {
                 Text(now, format: .dateTime.weekday(.wide).month(.wide).day())
-                    .font(.system(size: 21, weight: .semibold, design: .rounded))
+                    .font(ForeverFont.subheader(size: 21, relativeTo: .headline))
                 Text(now, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute(.twoDigits))
-                    .font(.system(size: 88, weight: .heavy, design: .rounded))
+                    .font(ForeverFont.header(size: 88, relativeTo: .largeTitle))
             }
             .foregroundStyle(.primary)
         }
@@ -319,7 +309,7 @@ private struct BoardToastOverlay: View {
         VStack {
             if let message = board.toastMessage {
                 Label(message, systemImage: "scribble.variable")
-                    .font(.subheadline.weight(.semibold))
+                    .font(ForeverFont.subheader(.subheadline))
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 12)
@@ -358,14 +348,3 @@ private extension UIImage {
     }
 }
 
-// MARK: - Wallpaper persistence (local-only, not synced)
-
-enum BoardWallpaperStore {
-    private static var url: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("board_wallpaper.jpg")
-    }
-
-    static func save(_ data: Data) { try? data.write(to: url) }
-    static func load() -> UIImage? { UIImage(contentsOfFile: url.path) }
-}

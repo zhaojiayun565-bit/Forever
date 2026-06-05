@@ -60,7 +60,7 @@ struct LocationPickerView: View {
                     Task { await confirmLocation() }
                 } label: {
                     Text("Confirm Location")
-                        .font(.headline)
+                        .font(ForeverFont.cta(.headline))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding()

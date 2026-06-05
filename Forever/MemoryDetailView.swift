@@ -50,7 +50,7 @@ struct MemoryDetailView: View {
 
                     if let note = memory.note, !note.isEmpty {
                         Text(note)
-                            .font(.system(.body, design: .rounded))
+                            .font(ForeverFont.body(.body))
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
                             .padding(20)
@@ -81,7 +81,7 @@ struct MemoryDetailView: View {
                             Image(systemName: "chevron.left")
                             Text("Back")
                         }
-                        .fontWeight(.semibold)
+                        .font(ForeverFont.bold(.subheadline))
                         .foregroundStyle(.white)
                         .padding(8)
                         .background(Color.black.opacity(0.4))

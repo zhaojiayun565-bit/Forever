@@ -47,6 +47,33 @@ final class AmbientDataManager: NSObject, CLLocationManagerDelegate {
         locationManager.requestWhenInUseAuthorization()
     }
 
+    /// Shows the system location prompt, or opens Settings when permission was already decided.
+    func handleLocationPermissionTap() {
+        switch authorizationStatus {
+        case .notDetermined:
+            requestLocationAuthorizationFirst()
+        default:
+            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+            UIApplication.shared.open(url)
+        }
+    }
+
+    /// Short label for the Me tab permissions row.
+    var locationPermissionStatusLabel: String {
+        switch authorizationStatus {
+        case .notDetermined:
+            return "Not Set"
+        case .denied, .restricted:
+            return "Off"
+        case .authorizedWhenInUse:
+            return "While Using"
+        case .authorizedAlways:
+            return "Always"
+        @unknown default:
+            return "Unknown"
+        }
+    }
+
     func fetchCurrentBatteryLevel() -> Int {
         UIDevice.current.isBatteryMonitoringEnabled = true
         let raw = UIDevice.current.batteryLevel

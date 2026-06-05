@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import Supabase
 import SwiftUI
+import UIKit
 
 /// Owns the shared drawing board's state and Supabase sync.
 ///
@@ -23,6 +24,9 @@ final class DrawingBoardManager {
     var remoteActiveStrokes: [UUID: DrawStroke] = [:]
     /// Non-nil while an in-app banner should be shown for a partner update.
     var toastMessage: String?
+    /// Shared board background, synced per couple via storage + realtime broadcast.
+    var wallpaper: UIImage?
+    var wallpaperUrl: String?
     var isLoading = true
 
     private var channel: RealtimeChannelV2?
@@ -70,12 +74,14 @@ final class DrawingBoardManager {
         let strokeStream = channel.broadcastStream(event: BoardEvent.stroke)
         let undoStream = channel.broadcastStream(event: BoardEvent.undo)
         let clearStream = channel.broadcastStream(event: BoardEvent.clear)
+        let wallpaperStream = channel.broadcastStream(event: BoardEvent.wallpaper)
 
         listenTask = Task { [weak self] in
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { for await json in strokeStream { await self?.handleStroke(json) } }
                 group.addTask { for await json in undoStream { await self?.handleUndo(json) } }
                 group.addTask { for await json in clearStream { await self?.handleClear(json) } }
+                group.addTask { for await json in wallpaperStream { await self?.handleWallpaper(json) } }
             }
         }
 
@@ -113,6 +119,37 @@ final class DrawingBoardManager {
             committedStrokes = try await supabase.fetchStrokes(coupleId: coupleId)
         } catch {
             print("🚨 Failed to load board strokes: \(error)")
+        }
+        do {
+            let couple = try await supabase.fetchCouple(id: coupleId)
+            if let url = couple.boardWallpaperUrl {
+                wallpaperUrl = url
+                wallpaper = await downloadWallpaper(from: url)
+            }
+        } catch {
+            print("🚨 Failed to load board wallpaper: \(error)")
+        }
+    }
+
+    /// Sets the shared board wallpaper locally, uploads it, persists on the couple, and broadcasts.
+    func setWallpaper(_ image: UIImage) async {
+        wallpaper = image
+        guard let coupleId else { return }
+        guard let data = image.jpegData(compressionQuality: 0.88) else { return }
+
+        do {
+            let url = try await supabase.uploadBoardWallpaper(data: data, coupleId: coupleId)
+            try await supabase.updateBoardWallpaperUrl(coupleId: coupleId, url: url)
+            wallpaperUrl = url
+            if let channel {
+                try await channel.broadcast(
+                    event: BoardEvent.wallpaper,
+                    message: WallpaperPayload(authorId: currentUserId, url: url)
+                )
+            }
+        } catch {
+            print("🚨 Failed to sync board wallpaper: \(error)")
+            showToast(String(localized: "Couldn't update background. Try again."))
         }
     }
 
@@ -223,16 +260,20 @@ final class DrawingBoardManager {
         }
     }
 
-    /// Rasterizes the current board, pushes a tight crop to the partner widget, and saves
-    /// a full-board snapshot to the shared archive.
-    func sendToWidget(boardSize: CGSize, wallpaper: UIImage?) async {
+    /// Rasterizes the current board, pushes a centered-square composite to the partner widget,
+    /// and saves a full-board snapshot to the shared archive.
+    func sendToWidget(boardSize: CGSize) async {
         let strokes = committedStrokes + Array(remoteActiveStrokes.values)
-        guard !strokes.isEmpty else {
-            showToast(String(localized: "Draw something first"))
+        guard !strokes.isEmpty || wallpaper != nil else {
+            showToast(String(localized: "Add a photo or draw something"))
             return
         }
-        guard let widgetData = BoardSnapshotRenderer.widgetPNG(strokes: strokes) else {
-            showToast(String(localized: "Draw something first"))
+        guard let widgetData = BoardSnapshotRenderer.widgetSquare(
+            strokes: strokes,
+            wallpaper: wallpaper,
+            boardSize: boardSize
+        ) else {
+            showToast(String(localized: "Add a photo or draw something"))
             return
         }
         guard let coupleId else { return }
@@ -266,9 +307,9 @@ final class DrawingBoardManager {
         committedStrokes.contains { $0.authorId == currentUserId }
     }
 
-    /// True when there is anything on the board to send.
+    /// True when there is anything on the board to send (strokes or a shared background).
     var canSend: Bool {
-        !committedStrokes.isEmpty || !remoteActiveStrokes.isEmpty
+        !committedStrokes.isEmpty || !remoteActiveStrokes.isEmpty || wallpaper != nil
     }
 
     // MARK: - Incoming broadcast handlers
@@ -327,6 +368,28 @@ final class DrawingBoardManager {
         print("🎨 [board] RECV clear")
         committedStrokes.removeAll()
         remoteActiveStrokes.removeAll()
+    }
+
+    private func handleWallpaper(_ json: JSONObject) {
+        guard
+            let payload = try? json["payload"]?.decode(as: WallpaperPayload.self),
+            payload.authorId != currentUserId
+        else { return }
+        wallpaperUrl = payload.url
+        Task {
+            if let image = await downloadWallpaper(from: payload.url) {
+                wallpaper = image
+            }
+        }
+    }
+
+    /// Downloads a wallpaper image from a public storage URL.
+    private func downloadWallpaper(from urlString: String) async -> UIImage? {
+        guard let url = URL(string: urlString),
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let image = UIImage(data: data)
+        else { return nil }
+        return image
     }
 
     private func triggerToast() {

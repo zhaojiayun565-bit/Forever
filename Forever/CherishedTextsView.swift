@@ -138,7 +138,7 @@ struct CherishedTextsView: View {
                 ProgressView()
                     .controlSize(.large)
                 Text("Reading screenshot…")
-                    .font(.subheadline.weight(.medium))
+                    .font(ForeverFont.subheader(.subheadline))
                     .foregroundStyle(.secondary)
             }
             .padding(28)

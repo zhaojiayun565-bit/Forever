@@ -117,7 +117,7 @@ struct EditMemoryView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { Task { await saveEdits() } }
-                        .fontWeight(.bold)
+                        .font(ForeverFont.cta(.body))
                         .disabled((existingUrls.isEmpty && newSelectedImages.isEmpty) || coordinate == nil || isSaving)
                 }
             }

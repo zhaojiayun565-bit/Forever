@@ -39,7 +39,7 @@ struct SplashView: View {
                 Spacer()
 
                 Text("Forever")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(ForeverFont.header(size: 28, relativeTo: .title2))
                     .tracking(0.6)
                     .foregroundStyle(
                         LinearGradient(

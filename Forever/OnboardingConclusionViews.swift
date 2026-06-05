@@ -37,7 +37,7 @@ struct IntroSelectableOptionRow: View {
 
     var body: some View {
         Text(title)
-            .font(.headline)
+            .font(ForeverFont.header(.headline))
             .foregroundStyle(.primary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 24)
@@ -85,7 +85,7 @@ private struct IntroJourneyChecklistRow: View {
             .frame(width: 28)
 
             Text(title)
-                .font(.headline)
+                .font(ForeverFont.header(.headline))
                 .foregroundStyle(state == .current ? .primary : .secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 2)
@@ -127,7 +127,7 @@ struct IntroJourneySummaryView: View {
                     .multilineTextAlignment(.center)
 
                 Text("You are 30 days away from building a completely new habit of connection.")
-                    .font(.title3)
+                    .font(ForeverFont.subheader(.title3))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -174,7 +174,7 @@ struct IntroUpfrontInvestmentView: View {
                     .multilineTextAlignment(.center)
 
                 Text("Forever is a premium experience designed to keep you and your partner close, free from ads and distractions.")
-                    .font(.title3)
+                    .font(ForeverFont.subheader(.title3))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -223,7 +223,7 @@ struct IntroUpfrontInvestmentView: View {
         VStack(spacing: 14) {
             icon()
             Text(caption)
-                .font(.subheadline.weight(.semibold))
+                .font(ForeverFont.subheader(.subheadline))
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
         }
@@ -316,7 +316,7 @@ struct IntroCommitmentEncouragementView: View {
                     .multilineTextAlignment(.center)
 
                 Text("Let's take the first one together.")
-                    .font(.title3)
+                    .font(ForeverFont.subheader(.title3))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }

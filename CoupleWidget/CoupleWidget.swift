@@ -297,7 +297,7 @@ struct MonogramAvatar: View {
                     Circle()
                         .fill(Color(.systemGray3))
                     Text(initial)
-                        .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
+                        .font(ForeverFont.bold(size: size * 0.42, relativeTo: .headline))
                         .foregroundStyle(.white)
                 }
             }
@@ -314,7 +314,7 @@ struct MessageBubble: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 12, weight: .semibold))
+            .font(ForeverFont.bold(size: 12, relativeTo: .caption))
             .foregroundStyle(.black)
             .lineLimit(1)
             .padding(.horizontal, 10)
@@ -377,7 +377,7 @@ struct DistanceWidgetView: View {
 
     private var distancePill: some View {
         Text(distanceText)
-            .font(.system(size: 14, weight: .bold))
+            .font(ForeverFont.bold(size: 14, relativeTo: .subheadline))
             .foregroundStyle(.black)
             .padding(.horizontal, 14)
             .padding(.vertical, 7)
@@ -444,7 +444,7 @@ struct DistanceWidgetView: View {
                 .font(.title2)
                 .foregroundStyle(.secondary)
             Text("Location permission is required for the widget to work!")
-                .font(.caption)
+                .font(ForeverFont.caption())
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 12)
@@ -459,28 +459,28 @@ struct DrawingWidgetView: View {
 
     var body: some View {
         ZStack {
-            // Explicitly force a black background so white ink is always visible
-            Color.black
-
-            if let image = entry.noteImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .padding(10)
-            } else {
+            if entry.noteImage == nil {
                 VStack(spacing: 8) {
                     Image(systemName: "scribble.variable")
                         .font(.largeTitle)
                     Text("Waiting for note...")
-                        .font(.caption)
+                        .font(ForeverFont.caption())
                 }
                 .foregroundColor(.white.opacity(0.5))
             }
         }
         // Tapping the note widget opens the shared drawing board.
         .widgetURL(URL(string: "forever://drawingboard"))
-        // For iOS 17 container backgrounds
-        .containerBackground(for: .widget) { Color.black }
+        // The composite is a pre-flattened square (background + strokes); fill the widget edge-to-edge.
+        .containerBackground(for: .widget) {
+            if let image = entry.noteImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Color.black
+            }
+        }
     }
 }
 
@@ -492,17 +492,17 @@ struct LockScreenMessageWidgetView: View {
         VStack(alignment: .leading, spacing: 2) {
             if let message = cleanedMessage {
                 Text(cleanedName ?? "Partner")
-                    .font(.caption2)
+                    .font(ForeverFont.caption(.caption2))
                     .lineLimit(1)
                 Text(message)
-                    .font(.headline.weight(.bold))
+                    .font(ForeverFont.bold(.headline))
                     .lineLimit(2)
             } else {
                 Text(cleanedName ?? "Partner")
-                    .font(.caption2)
+                    .font(ForeverFont.caption(.caption2))
                     .lineLimit(1)
                 Text("No message yet")
-                    .font(.headline.weight(.bold))
+                    .font(ForeverFont.bold(.headline))
                     .lineLimit(2)
             }
         }
@@ -555,10 +555,10 @@ struct DistanceLockScreenWidgetView: View {
             // Top Row: Distance Label and Value
             HStack(spacing: 4) {
                 Text("DISTANCE")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(ForeverFont.bold(size: 10, relativeTo: .caption2))
                     .foregroundStyle(.secondary)
                 Text(distanceText)
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .font(ForeverFont.header(size: 12, relativeTo: .caption))
             }
 
             // Bottom Row: Initials dynamically moving closer to the heart
@@ -566,7 +566,7 @@ struct DistanceLockScreenWidgetView: View {
                 ZStack {
                     Circle().stroke(lineWidth: 2.2)
                     Text(myInitial)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(ForeverFont.bold(size: 14, relativeTo: .subheadline))
                 }
                 .frame(width: 26, height: 26)
 
@@ -588,7 +588,7 @@ struct DistanceLockScreenWidgetView: View {
                 ZStack {
                     Circle().stroke(lineWidth: 2.2)
                     Text(partnerInitial)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(ForeverFont.bold(size: 14, relativeTo: .subheadline))
                 }
                 .frame(width: 26, height: 26)
             }
@@ -638,7 +638,7 @@ struct DaysTogetherWidgetView: View {
                 Image(systemName: "heart.fill")
                     .font(.caption2)
                 Text(dayText)
-                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .font(ForeverFont.header(size: 18, relativeTo: .headline))
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
             }
@@ -671,11 +671,11 @@ struct DaysTogetherWidgetView: View {
             
             VStack(spacing: -2) {
                 Text(dayText)
-                    .font(.system(size: 38, weight: .bold, design: .rounded))
+                    .font(ForeverFont.header(size: 38, relativeTo: .largeTitle))
                     .foregroundStyle(.white)
                 
                 Text("DAYS")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(ForeverFont.bold(size: 12, relativeTo: .caption))
                     .foregroundStyle(.gray)
                     .tracking(1.5)
             }

@@ -168,6 +168,14 @@ struct SettingsView: View {
                     .pickerStyle(.menu)
                 }
 
+                Section("Library") {
+                    NavigationLink {
+                        ArchiveView(embedded: true)
+                    } label: {
+                        Label("Drawing Archive", systemImage: "square.grid.2x2.fill")
+                    }
+                }
+
                 Section("Permissions") {
                     Button {
                         // Notifications action wired later.

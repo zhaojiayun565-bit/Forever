@@ -119,6 +119,13 @@ final class AppStateManager {
         memoriesListenerTask = nil
     }
 
+    /// Re-fetches the canonical couple row (e.g. after questions streak updates).
+    func refreshCurrentCouple() async {
+        if let couple = try? await supabase.fetchCurrentCouple() {
+            currentCouple = couple
+        }
+    }
+
     /// Uploads our location to Supabase, refreshes currentUser so its lat/lon is current,
     /// then fetches the partner's profile and reloads widget data.
     func syncAndRefreshWidgets() async {

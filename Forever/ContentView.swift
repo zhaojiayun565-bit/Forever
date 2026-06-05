@@ -68,8 +68,8 @@ struct ContentView: View {
                 MapDashboardView()
                     .tabItem { Label("Map", systemImage: "map.fill") }
 
-                ArchiveView()
-                    .tabItem { Label("Archive", systemImage: "square.grid.2x2.fill") }
+                DiscoverQuestionsView()
+                    .tabItem { Label("Questions", systemImage: "sparkles") }
 
                 SettingsView()
                     .tabItem { Label("Me", systemImage: "person.circle.fill") }

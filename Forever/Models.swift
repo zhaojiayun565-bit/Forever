@@ -53,6 +53,7 @@ struct Couple: Codable, Identifiable, Hashable {
     let user1Id: UUID
     let user2Id: UUID
     var boardWallpaperUrl: String?
+    var questionsStreakCount: Int
     let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -60,7 +61,34 @@ struct Couple: Codable, Identifiable, Hashable {
         case user1Id = "user1_id"
         case user2Id = "user2_id"
         case boardWallpaperUrl = "board_wallpaper_url"
+        case questionsStreakCount = "questions_streak_count"
         case createdAt = "created_at"
+    }
+
+    init(
+        id: UUID,
+        user1Id: UUID,
+        user2Id: UUID,
+        boardWallpaperUrl: String? = nil,
+        questionsStreakCount: Int = 0,
+        createdAt: Date
+    ) {
+        self.id = id
+        self.user1Id = user1Id
+        self.user2Id = user2Id
+        self.boardWallpaperUrl = boardWallpaperUrl
+        self.questionsStreakCount = questionsStreakCount
+        self.createdAt = createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        user1Id = try container.decode(UUID.self, forKey: .user1Id)
+        user2Id = try container.decode(UUID.self, forKey: .user2Id)
+        boardWallpaperUrl = try container.decodeIfPresent(String.self, forKey: .boardWallpaperUrl)
+        questionsStreakCount = try container.decodeIfPresent(Int.self, forKey: .questionsStreakCount) ?? 0
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
     }
 }
 
@@ -79,6 +107,93 @@ struct CoupleMemory: Identifiable, Equatable, Hashable {
 
     var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+}
+
+// MARK: - Questions
+
+/// Row in `question_categories`.
+struct QuestionCategory: Codable, Identifiable, Hashable {
+    let id: UUID
+    let title: String
+    let description: String?
+    let iconName: String?
+    let isPremium: Bool
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case description
+        case iconName = "icon_name"
+        case isPremium = "is_premium"
+        case sortOrder = "sort_order"
+    }
+}
+
+/// Row in `questions`.
+struct Question: Codable, Identifiable, Hashable {
+    let id: UUID
+    let categoryId: UUID
+    let questionText: String
+    let isDaily: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case categoryId = "category_id"
+        case questionText = "question_text"
+        case isDaily = "is_daily"
+    }
+}
+
+/// Row in `couple_answers`; partner_a maps to user1, partner_b to user2.
+struct CoupleAnswer: Codable, Identifiable, Hashable {
+    let id: UUID
+    let coupleId: UUID
+    let questionId: UUID
+    let partnerAId: UUID
+    var partnerAResponse: String?
+    var partnerAAnsweredAt: Date?
+    let partnerBId: UUID
+    var partnerBResponse: String?
+    var partnerBAnsweredAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case coupleId = "couple_id"
+        case questionId = "question_id"
+        case partnerAId = "partner_a_id"
+        case partnerAResponse = "partner_a_response"
+        case partnerAAnsweredAt = "partner_a_answered_at"
+        case partnerBId = "partner_b_id"
+        case partnerBResponse = "partner_b_response"
+        case partnerBAnsweredAt = "partner_b_answered_at"
+    }
+
+    /// Whether both partners have submitted an answer.
+    var isRevealed: Bool {
+        partnerAAnsweredAt != nil && partnerBAnsweredAt != nil
+    }
+
+    /// The current user's saved response, if any.
+    func myResponse(for userId: UUID) -> String? {
+        if userId == partnerAId { return partnerAResponse }
+        if userId == partnerBId { return partnerBResponse }
+        return nil
+    }
+
+    /// The partner's response (only meaningful once revealed).
+    func partnerResponse(for userId: UUID) -> String? {
+        if userId == partnerAId { return partnerBResponse }
+        if userId == partnerBId { return partnerAResponse }
+        return nil
+    }
+
+    /// Whether the given user has already answered.
+    func hasAnswered(userId: UUID) -> Bool {
+        if userId == partnerAId { return partnerAAnsweredAt != nil }
+        if userId == partnerBId { return partnerBAnsweredAt != nil }
+        return false
     }
 }
 
@@ -118,6 +233,7 @@ extension Couple {
         user1Id: UUID(),
         user2Id: UUID(),
         boardWallpaperUrl: nil,
+        questionsStreakCount: 0,
         createdAt: Date()
     )
 }

@@ -3,6 +3,8 @@ import SwiftUI
 import UIKit
 
 struct ArchiveView: View {
+    var embedded: Bool = false
+
     @Environment(AppStateManager.self) private var state
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = ArchiveViewModel()
@@ -14,45 +16,53 @@ struct ArchiveView: View {
     ]
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if viewModel.isLoading && viewModel.drawings.isEmpty {
-                    ProgressView()
-                } else if viewModel.drawings.isEmpty {
-                    emptyState
-                } else {
-                    ScrollView {
-                        LazyVGrid(columns: columns, spacing: 16) {
-                            ForEach(viewModel.drawings) { drawing in
-                                Button {
-                                    selectedDrawing = drawing
-                                } label: {
-                                    archiveCard(for: drawing)
-                                }
-                                .buttonStyle(.plain)
+        if embedded {
+            archiveContent
+        } else {
+            NavigationStack {
+                archiveContent
+            }
+        }
+    }
+
+    private var archiveContent: some View {
+        Group {
+            if viewModel.isLoading && viewModel.drawings.isEmpty {
+                ProgressView()
+            } else if viewModel.drawings.isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: columns, spacing: 16) {
+                        ForEach(viewModel.drawings) { drawing in
+                            Button {
+                                selectedDrawing = drawing
+                            } label: {
+                                archiveCard(for: drawing)
                             }
+                            .buttonStyle(.plain)
                         }
-                        .padding(16)
                     }
+                    .padding(16)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(UIColor.systemGroupedBackground))
-            .navigationTitle("Archive")
-            .refreshable {
-                await viewModel.load(coupleId: state.currentCouple?.id)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(UIColor.systemGroupedBackground))
+        .navigationTitle("Archive")
+        .refreshable {
+            await viewModel.load(coupleId: state.currentCouple?.id)
+        }
+        .task {
+            await viewModel.load(coupleId: state.currentCouple?.id)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await viewModel.load(coupleId: state.currentCouple?.id) }
             }
-            .task {
-                await viewModel.load(coupleId: state.currentCouple?.id)
-            }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active {
-                    Task { await viewModel.load(coupleId: state.currentCouple?.id) }
-                }
-            }
-            .fullScreenCover(item: $selectedDrawing) { drawing in
-                ArchiveDrawingViewer(drawing: drawing, onClose: { selectedDrawing = nil })
-            }
+        }
+        .fullScreenCover(item: $selectedDrawing) { drawing in
+            ArchiveDrawingViewer(drawing: drawing, onClose: { selectedDrawing = nil })
         }
     }
 

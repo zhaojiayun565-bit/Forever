@@ -8,7 +8,13 @@ struct HomeDashboardView: View {
     @State private var showingDrawingBoard = false
     @State private var showingPairingRequiredAlert = false
     @State private var showPairingSheet = false
-    
+    @State private var dailyQuestionVM = DailyQuestionViewModel()
+    @State private var showDailyAnswerSheet = false
+
+    private var partnerName: String {
+        state.partnerProfile?.displayName ?? String(localized: "Partner")
+    }
+
     private var distanceInMiles: Double? {
         guard
             let myLat = state.currentUser?.latitude,
@@ -43,6 +49,20 @@ struct HomeDashboardView: View {
                 VStack(spacing: 24) {
                     // 2. THE HERO CARD
                     DaysTogetherHeroCard()
+
+                    if let couple = state.currentCouple,
+                       let userId = state.currentUser?.id,
+                       let question = dailyQuestionVM.question {
+                        DailyQuestionCard(
+                            questionText: question.questionText,
+                            partnerName: partnerName,
+                            revealState: dailyQuestionVM.revealState,
+                            myAnswer: dailyQuestionVM.answer?.myResponse(for: userId),
+                            partnerAnswer: dailyQuestionVM.answer?.partnerResponse(for: userId),
+                            streakCount: couple.questionsStreakCount,
+                            onAnswerTapped: { showDailyAnswerSheet = true }
+                        )
+                    }
 
                     if state.currentCouple == nil {
                         PairingCardView {
@@ -173,6 +193,29 @@ struct HomeDashboardView: View {
             }
             .background(Color(UIColor.systemGroupedBackground))
             .navigationTitle("Us")
+            .task(id: state.currentCouple?.id) {
+                await dailyQuestionVM.load(
+                    couple: state.currentCouple,
+                    currentUserId: state.currentUser?.id
+                )
+            }
+            .onChange(of: dailyQuestionVM.revealState) { _, revealState in
+                if revealState == .revealed {
+                    Task { await state.refreshCurrentCouple() }
+                }
+            }
+            .sheet(isPresented: $showDailyAnswerSheet) {
+                if let question = dailyQuestionVM.question {
+                    QuestionAnswerSheet(
+                        questionText: question.questionText,
+                        isSubmitting: dailyQuestionVM.isSubmitting,
+                        onSubmit: { text in
+                            await dailyQuestionVM.submitAnswer(text)
+                        },
+                        onDismiss: { showDailyAnswerSheet = false }
+                    )
+                }
+            }
             .fullScreenCover(isPresented: $showingDrawingBoard) {
                 LockscreenDrawingBoardView()
                     .environment(state)

@@ -10,6 +10,9 @@ enum DB {
     static let drawingArchive = "drawing_archive"
     static let cherishedTexts = "cherished_texts"
     static let cherishedTextsBucket = "cherished_texts_images"
+    static let questionCategories = "question_categories"
+    static let questions = "questions"
+    static let coupleAnswers = "couple_answers"
 }
 
 enum PairingError: LocalizedError {
@@ -681,6 +684,108 @@ final class SupabaseManager: Sendable {
         }
     }
 
+    // MARK: - Questions
+
+    /// Fetches all question categories ordered by sort_order.
+    func fetchQuestionCategories() async throws -> [QuestionCategory] {
+        try await client.from(DB.questionCategories)
+            .select()
+            .order("sort_order", ascending: true)
+            .execute()
+            .value
+    }
+
+    /// Fetches questions belonging to a category.
+    func fetchQuestions(categoryId: UUID) async throws -> [Question] {
+        try await client.from(DB.questions)
+            .select()
+            .eq("category_id", value: categoryId)
+            .execute()
+            .value
+    }
+
+    /// Fetches the pool of daily questions.
+    func fetchDailyQuestions() async throws -> [Question] {
+        try await client.from(DB.questions)
+            .select()
+            .eq("is_daily", value: true)
+            .execute()
+            .value
+    }
+
+    /// Fetches the couple's answer row for a specific question, if it exists.
+    func fetchCoupleAnswer(coupleId: UUID, questionId: UUID) async throws -> CoupleAnswer? {
+        let rows: [CoupleAnswer] = try await client.from(DB.coupleAnswers)
+            .select()
+            .eq("couple_id", value: coupleId)
+            .eq("question_id", value: questionId)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first
+    }
+
+    /// Fetches all answer rows for a couple (used for category progress).
+    func fetchCoupleAnswers(coupleId: UUID) async throws -> [CoupleAnswer] {
+        try await client.from(DB.coupleAnswers)
+            .select()
+            .eq("couple_id", value: coupleId)
+            .execute()
+            .value
+    }
+
+    /// Submits the current user's answer via the secure RPC.
+    func submitQuestionAnswer(questionId: UUID, response: String) async throws -> CoupleAnswer {
+        try await client.rpc(
+            "submit_question_answer",
+            params: SubmitQuestionAnswerParams(
+                p_question_id: questionId,
+                p_response: response
+            )
+        )
+        .execute()
+        .value
+    }
+
+    /// Subscribes to Realtime INSERT/UPDATE on `couple_answers` for a couple.
+    func listenForCoupleAnswerChanges(
+        coupleId: UUID,
+        onChange: @escaping @MainActor @Sendable () async -> Void
+    ) -> Task<Void, Never> {
+        Task {
+            let channel = client.realtimeV2.channel("couple-answers-\(coupleId.uuidString)")
+            let filter = "couple_id=eq.\(coupleId.uuidString)"
+            let inserts = channel.postgresChange(
+                InsertAction.self, schema: "public", table: DB.coupleAnswers, filter: filter
+            )
+            let updates = channel.postgresChange(
+                UpdateAction.self, schema: "public", table: DB.coupleAnswers, filter: filter
+            )
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                print("🚨 Couple answers subscribe failed: \(error)")
+                return
+            }
+            defer { Task { await self.client.realtimeV2.removeChannel(channel) } }
+
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    for await _ in inserts {
+                        guard !Task.isCancelled else { return }
+                        await onChange()
+                    }
+                }
+                group.addTask {
+                    for await _ in updates {
+                        guard !Task.isCancelled else { return }
+                        await onChange()
+                    }
+                }
+            }
+        }
+    }
+
     /// Subscribes to Realtime INSERT/DELETE on `cherished_texts` for a couple.
     /// The returned task runs until cancelled; call `onChange` to merge remote updates.
     func listenForCherishedTextChanges(
@@ -764,6 +869,11 @@ private nonisolated struct ProfileInsertWithName: Encodable, Sendable {
 
 private nonisolated struct FindPartnerParams: Encodable, Sendable {
     let p_code: String
+}
+
+private nonisolated struct SubmitQuestionAnswerParams: Encodable, Sendable {
+    let p_question_id: UUID
+    let p_response: String
 }
 
 private nonisolated struct NewCoupleInsert: Encodable, Sendable {

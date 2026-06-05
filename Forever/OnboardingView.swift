@@ -231,8 +231,13 @@ struct OnboardingView: View {
                     )
                     .transition(standardStepTransition)
                 case .features:
-                    IntroFeaturePreviewView(tab: $featureTab, action: advance)
-                        .transition(standardStepTransition)
+                    IntroFeaturePreviewView(
+                        tab: $featureTab,
+                        myName: myName,
+                        partnerName: partnerName,
+                        action: advance
+                    )
+                    .transition(standardStepTransition)
                 case .firstMemorySetup:
                     IntroPromptStepView(
                         title: "Let's capture your first memory.",
@@ -1107,7 +1112,15 @@ struct IntentSelectionView: View {
 /// Intro-phase preview of Live Distance and Handwritten Notes (no permission prompts).
 struct IntroFeaturePreviewView: View {
     @Binding var tab: Int
+    let myName: String
+    let partnerName: String
     let action: () -> Void
+
+    private var partnerInitial: String {
+        let trimmed = partnerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = trimmed.first else { return "?" }
+        return String(first).uppercased()
+    }
 
     var body: some View {
         TabView(selection: $tab) {
@@ -1117,8 +1130,14 @@ struct IntroFeaturePreviewView: View {
                 description: "See exactly how far apart you are directly on your Lock Screen.",
                 buttonTitle: "Next",
                 usesIntroStyle: true,
+                showsDefaultIcon: false,
                 buttonAction: { withAnimation { tab = 1 } }
-            )
+            ) {
+                LiveDistanceWidgetPreviewCard(
+                    myLabel: "Me",
+                    partnerInitial: partnerInitial
+                )
+            }
             .tag(0)
 
             FeaturePage(
@@ -1136,30 +1155,41 @@ struct IntroFeaturePreviewView: View {
     }
 }
 
-struct FeaturePage: View {
+struct FeaturePage<Illustration: View>: View {
     let icon: String
     let title: String
     let description: String
     let buttonTitle: String
     var usesIntroStyle: Bool = false
+    var showsDefaultIcon: Bool = true
     let buttonAction: () -> Void
+    @ViewBuilder var illustration: () -> Illustration
+
+    init(
+        icon: String,
+        title: String,
+        description: String,
+        buttonTitle: String,
+        usesIntroStyle: Bool = false,
+        showsDefaultIcon: Bool = true,
+        buttonAction: @escaping () -> Void,
+        @ViewBuilder illustration: @escaping () -> Illustration
+    ) {
+        self.icon = icon
+        self.title = title
+        self.description = description
+        self.buttonTitle = buttonTitle
+        self.usesIntroStyle = usesIntroStyle
+        self.showsDefaultIcon = showsDefaultIcon
+        self.buttonAction = buttonAction
+        self.illustration = illustration
+    }
 
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
 
-            Image(systemName: icon)
-                .font(.system(size: 100))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: usesIntroStyle
-                            ? [OnboardingIntroTheme.accent, OnboardingIntroTheme.accent.opacity(0.7)]
-                            : [.pink, .purple],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .padding(.bottom, 20)
+            heroContent
 
             Text(title)
                 .font(usesIntroStyle ? OnboardingLayout.titleFont : ForeverFont.header(size: 32, relativeTo: .title))
@@ -1193,6 +1223,49 @@ struct FeaturePage: View {
             }
             .padding(.bottom, 60)
         }
+    }
+
+    @ViewBuilder
+    private var heroContent: some View {
+        if showsDefaultIcon {
+            Image(systemName: icon)
+                .font(.system(size: 100))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: usesIntroStyle
+                            ? [OnboardingIntroTheme.accent, OnboardingIntroTheme.accent.opacity(0.7)]
+                            : [.pink, .purple],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .padding(.bottom, 20)
+        } else {
+            illustration()
+                .padding(.bottom, 20)
+        }
+    }
+}
+
+extension FeaturePage where Illustration == EmptyView {
+    init(
+        icon: String,
+        title: String,
+        description: String,
+        buttonTitle: String,
+        usesIntroStyle: Bool = false,
+        buttonAction: @escaping () -> Void
+    ) {
+        self.init(
+            icon: icon,
+            title: title,
+            description: description,
+            buttonTitle: buttonTitle,
+            usesIntroStyle: usesIntroStyle,
+            showsDefaultIcon: true,
+            buttonAction: buttonAction,
+            illustration: { EmptyView() }
+        )
     }
 }
 

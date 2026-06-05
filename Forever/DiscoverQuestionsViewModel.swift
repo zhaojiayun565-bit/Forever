@@ -70,7 +70,7 @@ final class CategoryQuestionsViewModel {
 
     private var coupleId: UUID?
     private var currentUserId: UUID?
-    private var realtimeTask: Task<Void, Never>?
+    nonisolated(unsafe) private var realtimeTask: Task<Void, Never>?
 
     init(category: QuestionCategory, supabase: SupabaseManager = .shared) {
         self.category = category

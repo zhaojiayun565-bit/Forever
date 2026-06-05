@@ -272,6 +272,34 @@ struct SimpleEntry: TimelineEntry {
     let mapSnapshot: UIImage?
 }
 
+extension SimpleEntry {
+    var isKilometers: Bool { distanceUnit == "km" }
+
+    var convertedDistance: Double {
+        isKilometers ? distance * 1.609344 : distance
+    }
+
+    var distanceUnitLabel: String { isKilometers ? "km" : "mi" }
+
+    /// True when both partners have coordinates and a distance can be shown.
+    var hasDistanceData: Bool {
+        myCoordinate != nil && partnerCoordinate != nil
+    }
+
+    /// Whether partners are effectively in the same place (rounds to 0 in the active unit).
+    var isTogether: Bool {
+        hasDistanceData && Int(convertedDistance.rounded()) == 0
+    }
+
+    /// Lock-screen distance value; -- when unavailable.
+    var lockScreenDistanceText: String {
+        guard hasDistanceData else { return "-- \(distanceUnitLabel)" }
+        return "\(Int(convertedDistance)) \(distanceUnitLabel)"
+    }
+
+    static let togetherMessage = "We're together!"
+}
+
 // MARK: - Distance Widget Components
 
 /// Native contact-style monogram circle (Find My look) with optional profile photo.
@@ -546,39 +574,35 @@ struct DistanceLockScreenWidgetView: View {
 
     var myInitial: String { String(entry.myName.prefix(1)).uppercased() }
     var partnerInitial: String { String(entry.partnerName.prefix(1)).uppercased() }
-    var isKilometers: Bool { entry.distanceUnit == "km" }
-    var convertedDistance: Double { isKilometers ? entry.distance * 1.609344 : entry.distance }
-    var distanceUnitLabel: String { isKilometers ? "km" : "mi" }
 
-    var distanceText: String {
-        entry.distance > 0 ? "\(Int(convertedDistance)) \(distanceUnitLabel)" : "-- \(distanceUnitLabel)"
-    }
+    var distanceText: String { entry.lockScreenDistanceText }
 
     // Calculate dynamic spacing based on distance.
-    // 5000+ miles = max spacing. 0 miles = 0 spacing (touching the heart).
+    // 5000+ miles = max spacing. 0 miles = min spacing (touching the heart).
     var dynamicSpacing: CGFloat {
-        guard entry.distance > 0 else { return 20 } // Default spacing if no data
-        let maxDistance: Double = 5000.0 // The distance considered 'max separation'
-        let maxSpacing: CGFloat = 25.0   // Max pixels of space between initial and heart
-        let minSpacing: CGFloat = 2.0    // Min pixels of space (almost touching)
+        guard entry.hasDistanceData else { return 20 }
+        if entry.isTogether { return 2.0 }
 
-        // Map the distance to a percentage (0.0 to 1.0)
+        let maxDistance: Double = 5000.0
+        let maxSpacing: CGFloat = 25.0
+        let minSpacing: CGFloat = 2.0
         let percentage = min(max(entry.distance / maxDistance, 0.0), 1.0)
-
-        // Calculate the spacing
-        let spacing = minSpacing + (maxSpacing - minSpacing) * CGFloat(percentage)
-        return spacing
+        return minSpacing + (maxSpacing - minSpacing) * CGFloat(percentage)
     }
 
     var body: some View {
         VStack(spacing: 6) {
-            // Top Row: Distance Label and Value
-            HStack(spacing: 4) {
-                Text("DISTANCE")
-                    .font(ForeverFont.bold(size: 10, relativeTo: .caption2))
-                    .foregroundStyle(.secondary)
-                Text(distanceText)
+            if entry.isTogether {
+                Text(SimpleEntry.togetherMessage)
                     .font(ForeverFont.header(size: 12, relativeTo: .caption))
+            } else {
+                HStack(spacing: 4) {
+                    Text("DISTANCE")
+                        .font(ForeverFont.bold(size: 10, relativeTo: .caption2))
+                        .foregroundStyle(.secondary)
+                    Text(distanceText)
+                        .font(ForeverFont.header(size: 12, relativeTo: .caption))
+                }
             }
 
             // Bottom Row: Initials dynamically moving closer to the heart

@@ -15,7 +15,7 @@ final class DailyQuestionViewModel {
 
     private var coupleId: UUID?
     private var currentUserId: UUID?
-    private var realtimeTask: Task<Void, Never>?
+    nonisolated(unsafe) private var realtimeTask: Task<Void, Never>?
 
     init(supabase: SupabaseManager = .shared) {
         self.supabase = supabase

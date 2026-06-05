@@ -18,6 +18,7 @@ struct Profile: Codable, Identifiable, Hashable {
     var deviceToken: String?
     var isPremium: Bool?
     var premiumExpiresAt: Date?
+    var timezone: String?
     let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -34,6 +35,7 @@ struct Profile: Codable, Identifiable, Hashable {
         case deviceToken = "device_token"
         case isPremium = "is_premium"
         case premiumExpiresAt = "premium_expires_at"
+        case timezone
         case createdAt = "created_at"
     }
 

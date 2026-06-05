@@ -1,6 +1,10 @@
 import SwiftUI
 import UserNotifications
 
+enum AppTab: Hashable {
+    case home, map, questions, me
+}
+
 struct ContentView: View {
     @Environment(AppStateManager.self) private var state
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
@@ -8,6 +12,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) var scenePhase
     @State private var showDrawingBoard = false
     @State private var showSplash = true
+    @State private var selectedTab: AppTab = .home
 
     var body: some View {
         ZStack {
@@ -43,6 +48,12 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .openDrawingBoard)) { _ in
             if state.currentCouple != nil { showDrawingBoard = true }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openHome)) { _ in
+            selectedTab = .home
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openQuestions)) { _ in
+            selectedTab = .questions
+        }
         .onOpenURL { url in
             if url.host == "drawingboard", state.currentCouple != nil {
                 showDrawingBoard = true
@@ -61,17 +72,21 @@ struct ContentView: View {
         } else if state.currentCouple == nil && !hasSkippedPairing {
             PairingView()
         } else {
-            TabView {
+            TabView(selection: $selectedTab) {
                 HomeDashboardView()
+                    .tag(AppTab.home)
                     .tabItem { Label("Us", systemImage: "heart.fill") }
 
                 MapDashboardView()
+                    .tag(AppTab.map)
                     .tabItem { Label("Map", systemImage: "map.fill") }
 
                 DiscoverQuestionsView()
+                    .tag(AppTab.questions)
                     .tabItem { Label("Questions", systemImage: "sparkles") }
 
                 SettingsView()
+                    .tag(AppTab.me)
                     .tabItem { Label("Me", systemImage: "person.circle.fill") }
             }
             .tint(.pink)

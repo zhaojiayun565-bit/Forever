@@ -6,6 +6,10 @@ import WidgetKit
 extension Notification.Name {
     /// Posted when a push or widget tap should route the user into the shared drawing board.
     static let openDrawingBoard = Notification.Name("openDrawingBoard")
+    /// Posted when a push should route to the Us tab (daily question).
+    static let openHome = Notification.Name("openHome")
+    /// Posted when a push should route to the Questions tab.
+    static let openQuestions = Notification.Name("openQuestions")
 }
 
 /// Shared keys for the App Group used by the widget and push pipeline.
@@ -81,9 +85,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     /// Routes a tapped notification into the drawing board when the payload requests it.
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
-        if userInfo["route"] as? String == "drawingboard" {
-            Task { @MainActor in
+        Task { @MainActor in
+            switch userInfo["route"] as? String {
+            case "drawingboard":
                 NotificationCenter.default.post(name: .openDrawingBoard, object: nil)
+            case "home":
+                NotificationCenter.default.post(name: .openHome, object: nil)
+            case "questions":
+                NotificationCenter.default.post(name: .openQuestions, object: nil)
+            default:
+                break
             }
         }
         completionHandler()

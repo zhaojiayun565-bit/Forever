@@ -404,6 +404,15 @@ final class SupabaseManager: Sendable {
             .execute()
     }
 
+    /// Persists the device IANA timezone for backend streak reminders.
+    func updateTimezone(_ timezone: String) async throws {
+        let session = try await client.auth.session
+        try await client.from(DB.profiles)
+            .update(TimezoneUpdateDTO(timezone: timezone))
+            .eq("id", value: session.user.id)
+            .execute()
+    }
+
     /// Uploads a profile photo and saves its public URL on the signed-in user's profile.
     func uploadProfileAvatar(_ imageData: Data) async throws -> String {
         let session = try await client.auth.session
@@ -514,10 +523,14 @@ final class SupabaseManager: Sendable {
         return publicUrl.absoluteString
     }
 
-    /// Persists the shared board wallpaper URL on the couple row.
+    /// Persists the shared board wallpaper URL and actor on the couple row.
     func updateBoardWallpaperUrl(coupleId: UUID, url: String) async throws {
+        let session = try await client.auth.session
         try await client.from(DB.couples)
-            .update(BoardWallpaperUpdate(board_wallpaper_url: url))
+            .update(BoardWallpaperUpdate(
+                board_wallpaper_url: url,
+                board_wallpaper_updated_by: session.user.id
+            ))
             .eq("id", value: coupleId)
             .execute()
     }
@@ -893,6 +906,11 @@ private nonisolated struct NoteUpdateDTO: Encodable, Sendable {
 
 private nonisolated struct BoardWallpaperUpdate: Encodable, Sendable {
     let board_wallpaper_url: String
+    let board_wallpaper_updated_by: UUID
+}
+
+private nonisolated struct TimezoneUpdateDTO: Encodable, Sendable {
+    let timezone: String
 }
 
 private nonisolated struct DeviceTokenUpdateDTO: Encodable, Sendable {

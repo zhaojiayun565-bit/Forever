@@ -61,6 +61,7 @@ final class AppStateManager {
                 }
 
                 currentUser = profile
+                try? await supabase.updateTimezone(TimeZone.current.identifier)
                 loadMyAvatarFromAppGroup()
                 currentCouple = try await supabase.fetchCurrentCouple()
                 if currentCouple != nil {

@@ -439,17 +439,37 @@ struct DistanceWidgetView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "location.slash.fill")
+        let content = emptyStateContent
+        return VStack(spacing: 8) {
+            Image(systemName: content.icon)
                 .font(.title2)
                 .foregroundStyle(.secondary)
-            Text("Location permission is required for the widget to work!")
+            Text(content.message)
                 .font(ForeverFont.caption())
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Chooses copy based on whether partner or own location is missing.
+    private var emptyStateContent: (icon: String, message: String) {
+        let hasPartner = !entry.partnerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && entry.partnerName != "P"
+
+        if entry.partnerCoordinate == nil {
+            if hasPartner {
+                return ("person.crop.circle.badge.clock", "Waiting for partner...")
+            }
+            return ("heart.fill", "Pair with your partner in Forever")
+        }
+
+        if entry.myCoordinate == nil {
+            return ("location.slash.fill", "Location permission is required for the widget to work!")
+        }
+
+        return ("map.fill", "Open Forever to refresh your map")
     }
 }
 

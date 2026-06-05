@@ -85,6 +85,8 @@ final class AppStateManager {
                 currentCouple = nil
                 partnerProfile = nil
                 myAvatarImage = nil
+                clearWidgetData(includePersonalData: true)
+                WidgetCenter.shared.reloadAllTimelines()
                 print("🔒 User is not authenticated. Awaiting login.")
             }
         } catch {
@@ -94,6 +96,8 @@ final class AppStateManager {
             currentCouple = nil
             partnerProfile = nil
             myAvatarImage = nil
+            clearWidgetData(includePersonalData: true)
+            WidgetCenter.shared.reloadAllTimelines()
         }
     }
 
@@ -375,6 +379,7 @@ final class AppStateManager {
             defaults.set(myLon, forKey: "myLongitude")
             defaults.set(pLat, forKey: "partnerLatitude")
             defaults.set(pLon, forKey: "partnerLongitude")
+            defaults.set(Date().timeIntervalSince1970, forKey: "partnerLocationUpdatedAt")
             didChange = true
         }
 
@@ -551,12 +556,18 @@ final class AppStateManager {
 
     /// Wipes partner-derived values from the App Group so widgets can't show stale data after unpairing.
     private func clearPartnerWidgetData() {
+        clearWidgetData(includePersonalData: false)
+    }
+
+    /// Clears cached widget data; optionally removes the signed-in user's cached location too.
+    private func clearWidgetData(includePersonalData: Bool) {
         guard let defaults = UserDefaults(suiteName: "group.com.jiayunzhao.Forever") else { return }
         let partnerKeys = [
             "partnerBattery",
             "partnerDistance",
             "partnerLatitude",
             "partnerLongitude",
+            "partnerLocationUpdatedAt",
             "partnerNoteUrl",
             "partnerName",
             "partnerMessage",
@@ -565,8 +576,23 @@ final class AppStateManager {
             "anniversaryDate"
         ]
         partnerKeys.forEach { defaults.removeObject(forKey: $0) }
+
+        if includePersonalData {
+            let personalKeys = [
+                "myLatitude",
+                "myLongitude",
+                "myName",
+                "myMessage",
+                "myAvatarUrl"
+            ]
+            personalKeys.forEach { defaults.removeObject(forKey: $0) }
+        }
+
         if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) {
             try? FileManager.default.removeItem(at: container.appendingPathComponent(AppGroup.partnerAvatarFileName))
+            if includePersonalData {
+                try? FileManager.default.removeItem(at: container.appendingPathComponent(AppGroup.myAvatarFileName))
+            }
         }
     }
 

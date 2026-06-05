@@ -6,6 +6,37 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+type AlertPushEvent = { type: "note" | "message" | "drawing_started"; title: string; body: string }
+type LocationPushEvent = { type: "location" }
+type PushEvent = AlertPushEvent | LocationPushEvent
+
+/** Returns true when lat/lon changed by roughly 50m or more. */
+function locationChanged(record: Record<string, unknown>, oldRecord: Record<string, unknown>): boolean {
+  const lat = record.latitude as number | null | undefined
+  const lon = record.longitude as number | null | undefined
+  if (lat == null || lon == null) return false
+
+  const oldLat = oldRecord.latitude as number | null | undefined
+  const oldLon = oldRecord.longitude as number | null | undefined
+  if (oldLat == null || oldLon == null) return true
+
+  const threshold = 0.0005
+  return Math.abs(lat - oldLat) > threshold || Math.abs(lon - oldLon) > threshold
+}
+
+/** Haversine distance in miles between two coordinates. */
+function distanceMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const earthRadiusMeters = 6_371_000
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
+  const meters = earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return meters / 1609.344
+}
+
 serve(async (req) => {
   try {
     const payload = await req.json()
@@ -13,10 +44,8 @@ serve(async (req) => {
     const oldRecord = payload.old_record ?? {}
     console.log("🔔 Webhook triggered for profile:", record.id)
 
-    // Only act on the specific field that actually changed, so frequent profile updates
-    // (location/battery syncs) don't re-fire stale pushes.
     const senderName = (record.display_name || "Your partner").trim()
-    let event: { type: string; title: string; body: string } | null = null
+    let event: PushEvent | null = null
 
     if (record.latest_note_url && record.latest_note_url !== oldRecord.latest_note_url) {
       event = { type: "note", title: "New Drawing 🎨", body: `${senderName} sent you a drawing!` }
@@ -24,6 +53,8 @@ serve(async (req) => {
       event = { type: "message", title: senderName, body: record.latest_message }
     } else if (record.drawing_started_at && record.drawing_started_at !== oldRecord.drawing_started_at) {
       event = { type: "drawing_started", title: `${senderName} is drawing ✏️`, body: "Tap to join them on the board" }
+    } else if (locationChanged(record, oldRecord)) {
+      event = { type: "location" }
     }
 
     if (!event) {
@@ -42,25 +73,26 @@ serve(async (req) => {
 
     const { data: partner, error: partnerError } = await supabase
       .from("profiles")
-      .select("device_token")
+      .select("device_token, latitude, longitude")
       .eq("id", partnerId)
       .single()
 
     if (partnerError || !partner?.device_token) {
-        console.log("⏩ Partner has no device token. Skipping push.")
-        return new Response("No device token.", { status: 200 })
+      console.log("⏩ Partner has no device token. Skipping push.")
+      return new Response("No device token.", { status: 200 })
     }
 
     const teamId = Deno.env.get("APPLE_TEAM_ID")!
     const keyId = Deno.env.get("APPLE_KEY_ID")!
     const privateKeyStr = Deno.env.get("APPLE_P8_KEY")!
-    const bundleId = Deno.env.get("APPLE_BUNDLE_ID")! 
+    const bundleId = Deno.env.get("APPLE_BUNDLE_ID")!
+    const apnsHost = Deno.env.get("APPLE_APNS_HOST") ?? "api.sandbox.push.apple.com"
 
     const pemContents = privateKeyStr
       .replace("-----BEGIN PRIVATE KEY-----", "")
       .replace("-----END PRIVATE KEY-----", "")
       .replace(/\s/g, "")
-    
+
     const binaryDerString = atob(pemContents)
     const binaryDer = new Uint8Array([...binaryDerString].map((char) => char.charCodeAt(0)))
 
@@ -78,42 +110,79 @@ serve(async (req) => {
       key
     )
 
-    const apnsUrl = `https://api.sandbox.push.apple.com/3/device/${partner.device_token}`
+    const apnsUrl = `https://${apnsHost}/3/device/${partner.device_token}`
 
-    console.log("📤 Sending push to Apple...")
-    const pushResponse = await fetch(apnsUrl, {
-      method: "POST",
-      headers: {
-        "authorization": `bearer ${jwt}`,
+    let pushHeaders: Record<string, string>
+    let pushBody: Record<string, unknown>
+
+    if (event.type === "location") {
+      let partnerDistance: number | null = null
+      if (
+        partner.latitude != null &&
+        partner.longitude != null &&
+        record.latitude != null &&
+        record.longitude != null
+      ) {
+        partnerDistance = distanceMiles(
+          partner.latitude,
+          partner.longitude,
+          record.latitude,
+          record.longitude
+        )
+      }
+
+      pushHeaders = {
+        authorization: `bearer ${jwt}`,
+        "apns-topic": bundleId,
+        "apns-push-type": "background",
+        "apns-priority": "5",
+      }
+      pushBody = {
+        aps: { "content-available": 1 },
+        type: "location",
+        partner_latitude: record.latitude,
+        partner_longitude: record.longitude,
+        partner_distance: partnerDistance,
+      }
+      console.log("📤 Sending silent location push to Apple...")
+    } else {
+      pushHeaders = {
+        authorization: `bearer ${jwt}`,
         "apns-topic": bundleId,
         "apns-push-type": "alert",
         "apns-priority": "10",
-      },
-      body: JSON.stringify({
+      }
+      pushBody = {
         aps: {
-          "alert": {
-            "title": event.title,
-            "body": event.body
+          alert: {
+            title: event.title,
+            body: event.body,
           },
-          "sound": "default",
-          "content-available": 1
+          sound: "default",
+          "content-available": 1,
         },
         type: event.type,
         route: "drawingboard",
         note_url: record.latest_note_url,
-        latest_message: record.latest_message
-      })
+        latest_message: record.latest_message,
+      }
+      console.log("📤 Sending alert push to Apple...")
+    }
+
+    const pushResponse = await fetch(apnsUrl, {
+      method: "POST",
+      headers: pushHeaders,
+      body: JSON.stringify(pushBody),
     })
 
     if (!pushResponse.ok) {
-        const errText = await pushResponse.text()
-        console.error("🚨 Apple APNs Error:", errText)
-        return new Response(`APNs error: ${errText}`, { status: 500 })
+      const errText = await pushResponse.text()
+      console.error("🚨 Apple APNs Error:", errText)
+      return new Response(`APNs error: ${errText}`, { status: 500 })
     }
 
     console.log("✅ Push successfully sent to Apple!")
     return new Response(JSON.stringify({ success: true }), { status: 200 })
-
   } catch (error) {
     console.error("🚨 Function Error:", error.message)
     return new Response(JSON.stringify({ error: error.message }), { status: 400 })

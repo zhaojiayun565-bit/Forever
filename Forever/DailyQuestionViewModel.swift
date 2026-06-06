@@ -15,20 +15,21 @@ final class DailyQuestionViewModel {
 
     private var coupleId: UUID?
     private var currentUserId: UUID?
-    nonisolated(unsafe) private var realtimeTask: Task<Void, Never>?
+    nonisolated(unsafe) private var realtimeObserverToken: UUID?
 
     init(supabase: SupabaseManager = .shared) {
         self.supabase = supabase
     }
 
     deinit {
-        realtimeTask?.cancel()
+        let token = realtimeObserverToken
+        Task { await supabase.stopObservingCoupleAnswerChanges(token: token) }
     }
 
     /// Fetches today's question and answer row, then starts Realtime listening.
     func load(couple: Couple?, currentUserId: UUID?) async {
-        realtimeTask?.cancel()
-        realtimeTask = nil
+        await supabase.stopObservingCoupleAnswerChanges(token: realtimeObserverToken)
+        realtimeObserverToken = nil
 
         guard let couple, let currentUserId else {
             question = nil
@@ -52,7 +53,7 @@ final class DailyQuestionViewModel {
                     questionId: questionId
                 )
             }
-            startRealtime(coupleId: couple.id)
+            await startRealtime(coupleId: couple.id)
         } catch {
             print("🚨 Failed to load daily question: \(error)")
             errorMessage = error.localizedDescription
@@ -86,8 +87,8 @@ final class DailyQuestionViewModel {
         return .unanswered
     }
 
-    private func startRealtime(coupleId: UUID) {
-        realtimeTask = supabase.listenForCoupleAnswerChanges(coupleId: coupleId) { [weak self] in
+    private func startRealtime(coupleId: UUID) async {
+        realtimeObserverToken = await supabase.observeCoupleAnswerChanges(coupleId: coupleId) { [weak self] in
             await self?.refreshAnswer()
         }
     }

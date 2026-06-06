@@ -63,11 +63,16 @@ final class DrawingBoardManager {
     /// Subscribes to the board channel and loads persisted strokes. Solo (unpaired) users
     /// get a local-only board with no channel or persistence.
     func start() async {
+        if channel != nil {
+            await stop()
+        }
+
         isLoading = true
         defer { isLoading = false }
         guard let coupleId else { return }
 
-        let channel = supabase.client.realtimeV2.channel("drawing-board-\(coupleId.uuidString)")
+        let topic = "drawing-board-\(coupleId.uuidString)"
+        let channel = await supabase.preparedRealtimeChannel(topic)
         self.channel = channel
 
         // Register broadcast listeners BEFORE subscribing so no early messages are missed.

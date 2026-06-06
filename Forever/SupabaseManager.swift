@@ -32,12 +32,13 @@ final class SupabaseManager: Sendable {
     static let shared = SupabaseManager()
 
     let client: SupabaseClient
+    private let coupleAnswersHub: CoupleAnswersRealtimeHub
 
     init(
         supabaseURL: URL = URL(string: "https://cdcnzkbxlyoxukxizfmd.supabase.co")!,
         supabaseKey: String = "sb_publishable_VygMgDm0S8and8KregtFyA_NF6tFRxK"
     ) {
-        client = SupabaseClient(
+        let client = SupabaseClient(
             supabaseURL: supabaseURL,
             supabaseKey: supabaseKey,
             options: SupabaseClientOptions(
@@ -45,6 +46,34 @@ final class SupabaseManager: Sendable {
                 realtime: .init(logLevel: .info)
             )
         )
+        self.client = client
+        coupleAnswersHub = CoupleAnswersRealtimeHub(client: client)
+    }
+
+    /// Unsubscribes and removes any cached channel for `topic`, then returns a fresh instance.
+    func preparedRealtimeChannel(_ topic: String) async -> RealtimeChannelV2 {
+        await tearDownRealtimeChannel(topic)
+        return client.realtimeV2.channel(topic)
+    }
+
+    /// Unsubscribes and removes a cached channel for `topic` if one exists.
+    func tearDownRealtimeChannel(_ topic: String) async {
+        let existing = client.realtimeV2.channel(topic)
+        await client.realtimeV2.removeChannel(existing)
+    }
+
+    /// Registers an observer on the shared couple-answers channel for `coupleId`.
+    func observeCoupleAnswerChanges(
+        coupleId: UUID,
+        onChange: @escaping @MainActor @Sendable () async -> Void
+    ) async -> UUID {
+        await coupleAnswersHub.addObserver(coupleId: coupleId, onChange: onChange)
+    }
+
+    /// Removes a couple-answers observer; tears down the channel when the last observer detaches.
+    func stopObservingCoupleAnswerChanges(token: UUID?) async {
+        guard let token else { return }
+        await coupleAnswersHub.removeObserver(token)
     }
 
     /// Returns the cached session if present; otherwise `nil` (does not throw for missing session).
@@ -760,45 +789,6 @@ final class SupabaseManager: Sendable {
         .value
     }
 
-    /// Subscribes to Realtime INSERT/UPDATE on `couple_answers` for a couple.
-    func listenForCoupleAnswerChanges(
-        coupleId: UUID,
-        onChange: @escaping @MainActor @Sendable () async -> Void
-    ) -> Task<Void, Never> {
-        Task {
-            let channel = client.realtimeV2.channel("couple-answers-\(coupleId.uuidString)")
-            let filter = "couple_id=eq.\(coupleId.uuidString)"
-            let inserts = channel.postgresChange(
-                InsertAction.self, schema: "public", table: DB.coupleAnswers, filter: filter
-            )
-            let updates = channel.postgresChange(
-                UpdateAction.self, schema: "public", table: DB.coupleAnswers, filter: filter
-            )
-            do {
-                try await channel.subscribeWithError()
-            } catch {
-                print("🚨 Couple answers subscribe failed: \(error)")
-                return
-            }
-            defer { Task { await self.client.realtimeV2.removeChannel(channel) } }
-
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask {
-                    for await _ in inserts {
-                        guard !Task.isCancelled else { return }
-                        await onChange()
-                    }
-                }
-                group.addTask {
-                    for await _ in updates {
-                        guard !Task.isCancelled else { return }
-                        await onChange()
-                    }
-                }
-            }
-        }
-    }
-
     /// Subscribes to Realtime INSERT/DELETE on `cherished_texts` for a couple.
     /// The returned task runs until cancelled; call `onChange` to merge remote updates.
     func listenForCherishedTextChanges(
@@ -806,7 +796,10 @@ final class SupabaseManager: Sendable {
         onChange: @escaping @MainActor @Sendable () async -> Void
     ) -> Task<Void, Never> {
         Task {
-            let channel = client.realtimeV2.channel("cherished-texts-\(coupleId.uuidString)")
+            let topic = "cherished-texts-\(coupleId.uuidString)"
+            let channel = await preparedRealtimeChannel(topic)
+            guard !Task.isCancelled else { return }
+
             let filter = "couple_id=eq.\(coupleId.uuidString)"
             let inserts = channel.postgresChange(
                 InsertAction.self, schema: "public", table: DB.cherishedTexts, filter: filter
@@ -814,28 +807,35 @@ final class SupabaseManager: Sendable {
             let deletes = channel.postgresChange(
                 DeleteAction.self, schema: "public", table: DB.cherishedTexts, filter: filter
             )
+
+            let consumeTask = Task {
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask {
+                        for await _ in inserts {
+                            guard !Task.isCancelled else { return }
+                            await onChange()
+                        }
+                    }
+                    group.addTask {
+                        for await _ in deletes {
+                            guard !Task.isCancelled else { return }
+                            await onChange()
+                        }
+                    }
+                }
+            }
+
             do {
                 try await channel.subscribeWithError()
             } catch {
+                consumeTask.cancel()
                 print("🚨 Cherished texts subscribe failed: \(error)")
+                await tearDownRealtimeChannel(topic)
                 return
             }
-            defer { Task { await self.client.realtimeV2.removeChannel(channel) } }
 
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask {
-                    for await _ in inserts {
-                        guard !Task.isCancelled else { return }
-                        await onChange()
-                    }
-                }
-                group.addTask {
-                    for await _ in deletes {
-                        guard !Task.isCancelled else { return }
-                        await onChange()
-                    }
-                }
-            }
+            await consumeTask.value
+            await tearDownRealtimeChannel(topic)
         }
     }
 
@@ -858,6 +858,118 @@ final class SupabaseManager: Sendable {
         return String(absolute[range.upperBound...])
     }
 
+}
+
+// MARK: - Couple Answers Realtime Hub
+
+/// One postgres-change channel per couple, fanning out events to multiple UI observers.
+actor CoupleAnswersRealtimeHub {
+    private let client: SupabaseClient
+    private var observers: [UUID: @MainActor @Sendable () async -> Void] = [:]
+    private var listenTask: Task<Void, Never>?
+    private var activeCoupleId: UUID?
+
+    init(client: SupabaseClient) {
+        self.client = client
+    }
+
+    /// Registers `onChange` and starts the shared channel when needed.
+    func addObserver(
+        coupleId: UUID,
+        onChange: @escaping @MainActor @Sendable () async -> Void
+    ) -> UUID {
+        let token = UUID()
+        observers[token] = onChange
+
+        if activeCoupleId != coupleId {
+            listenTask?.cancel()
+            listenTask = nil
+            if let previous = activeCoupleId {
+                let oldTopic = Self.topic(for: previous)
+                Task { await Self.tearDownChannel(client: client, topic: oldTopic) }
+            }
+            activeCoupleId = coupleId
+        }
+
+        if listenTask == nil {
+            listenTask = startListening(coupleId: coupleId)
+        }
+        return token
+    }
+
+    /// Detaches an observer and tears down the channel when none remain.
+    func removeObserver(_ token: UUID) async {
+        observers.removeValue(forKey: token)
+        guard observers.isEmpty else { return }
+
+        listenTask?.cancel()
+        listenTask = nil
+        if let coupleId = activeCoupleId {
+            await Self.tearDownChannel(client: client, topic: Self.topic(for: coupleId))
+            activeCoupleId = nil
+        }
+    }
+
+    private func startListening(coupleId: UUID) -> Task<Void, Never> {
+        Task {
+            let topic = Self.topic(for: coupleId)
+            await Self.tearDownChannel(client: client, topic: topic)
+            guard !Task.isCancelled else { return }
+
+            let channel = client.realtimeV2.channel(topic)
+            let filter = "couple_id=eq.\(coupleId.uuidString)"
+            let inserts = channel.postgresChange(
+                InsertAction.self, schema: "public", table: DB.coupleAnswers, filter: filter
+            )
+            let updates = channel.postgresChange(
+                UpdateAction.self, schema: "public", table: DB.coupleAnswers, filter: filter
+            )
+
+            let consumeTask = Task {
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask {
+                        for await _ in inserts {
+                            guard !Task.isCancelled else { return }
+                            await self.notifyObservers()
+                        }
+                    }
+                    group.addTask {
+                        for await _ in updates {
+                            guard !Task.isCancelled else { return }
+                            await self.notifyObservers()
+                        }
+                    }
+                }
+            }
+
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                consumeTask.cancel()
+                print("🚨 Couple answers subscribe failed: \(error)")
+                await Self.tearDownChannel(client: client, topic: topic)
+                return
+            }
+
+            await consumeTask.value
+            await Self.tearDownChannel(client: client, topic: topic)
+        }
+    }
+
+    private func notifyObservers() async {
+        for callback in observers.values {
+            await callback()
+        }
+    }
+
+    private static func topic(for coupleId: UUID) -> String {
+        "couple-answers-\(coupleId.uuidString)"
+    }
+
+    private static func tearDownChannel(client: SupabaseClient, topic: String) async {
+        let existing = client.realtimeV2.channel(topic)
+        await client.realtimeV2.removeChannel(existing)
+    }
 }
 
 // MARK: - DTOs (Data Transfer Objects)

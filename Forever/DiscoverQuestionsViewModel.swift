@@ -70,7 +70,7 @@ final class CategoryQuestionsViewModel {
 
     private var coupleId: UUID?
     private var currentUserId: UUID?
-    nonisolated(unsafe) private var realtimeTask: Task<Void, Never>?
+    nonisolated(unsafe) private var realtimeObserverToken: UUID?
 
     init(category: QuestionCategory, supabase: SupabaseManager = .shared) {
         self.category = category
@@ -78,13 +78,14 @@ final class CategoryQuestionsViewModel {
     }
 
     deinit {
-        realtimeTask?.cancel()
+        let token = realtimeObserverToken
+        Task { await supabase.stopObservingCoupleAnswerChanges(token: token) }
     }
 
     /// Fetches questions and answer rows for the category.
     func load(couple: Couple?, currentUserId: UUID?) async {
-        realtimeTask?.cancel()
-        realtimeTask = nil
+        await supabase.stopObservingCoupleAnswerChanges(token: realtimeObserverToken)
+        realtimeObserverToken = nil
 
         guard let couple, let currentUserId else {
             questions = []
@@ -106,7 +107,7 @@ final class CategoryQuestionsViewModel {
                     .filter { questionIds.contains($0.questionId) }
                     .map { ($0.questionId, $0) }
             )
-            startRealtime(coupleId: couple.id)
+            await startRealtime(coupleId: couple.id)
         } catch {
             print("🚨 Failed to load category questions: \(error)")
         }
@@ -135,8 +136,8 @@ final class CategoryQuestionsViewModel {
         }
     }
 
-    private func startRealtime(coupleId: UUID) {
-        realtimeTask = supabase.listenForCoupleAnswerChanges(coupleId: coupleId) { [weak self] in
+    private func startRealtime(coupleId: UUID) async {
+        realtimeObserverToken = await supabase.observeCoupleAnswerChanges(coupleId: coupleId) { [weak self] in
             await self?.refreshAnswers()
         }
     }

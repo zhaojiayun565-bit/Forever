@@ -39,6 +39,9 @@ final class AppStateManager {
     private var pairingListenerTask: Task<Void, Never>?
     private var partnerLocationListenerTask: Task<Void, Never>?
     private var memoriesListenerTask: Task<Void, Never>?
+    private var pairingChannelTopic: String?
+    private var memoriesChannelTopic: String?
+    private var partnerProfileChannelTopic: String?
 
     init(supabase: SupabaseManager = .shared) {
         self.supabase = supabase
@@ -81,7 +84,7 @@ final class AppStateManager {
             } else {
                 await SubscriptionManager.shared.syncUserID(nil)
                 // Not logged in. Clear state so LoginView shows.
-                cancelRealtimeListeners()
+                await cancelRealtimeListeners()
                 currentUser = nil
                 currentCouple = nil
                 partnerProfile = nil
@@ -92,7 +95,7 @@ final class AppStateManager {
             }
         } catch {
             print("🚨 INIT ERROR: \(error)")
-            cancelRealtimeListeners()
+            await cancelRealtimeListeners()
             currentUser = nil
             currentCouple = nil
             partnerProfile = nil
@@ -110,14 +113,27 @@ final class AppStateManager {
         myAvatarImage = image
     }
 
-    /// Stops all Realtime listener tasks (sign-out, unpair, or auth failure).
-    private func cancelRealtimeListeners() {
+    /// Stops all Realtime listener tasks and awaits channel teardown.
+    private func cancelRealtimeListeners() async {
         pairingListenerTask?.cancel()
         pairingListenerTask = nil
         partnerLocationListenerTask?.cancel()
         partnerLocationListenerTask = nil
         memoriesListenerTask?.cancel()
         memoriesListenerTask = nil
+
+        if let pairingChannelTopic {
+            await supabase.tearDownRealtimeChannel(pairingChannelTopic)
+            self.pairingChannelTopic = nil
+        }
+        if let memoriesChannelTopic {
+            await supabase.tearDownRealtimeChannel(memoriesChannelTopic)
+            self.memoriesChannelTopic = nil
+        }
+        if let partnerProfileChannelTopic {
+            await supabase.tearDownRealtimeChannel(partnerProfileChannelTopic)
+            self.partnerProfileChannelTopic = nil
+        }
     }
 
     /// Re-fetches the canonical couple row (e.g. after questions streak updates).
@@ -522,6 +538,10 @@ final class AppStateManager {
     func linkWithPartner(code: String) async throws {
         pairingListenerTask?.cancel()
         pairingListenerTask = nil
+        if let pairingChannelTopic {
+            await supabase.tearDownRealtimeChannel(pairingChannelTopic)
+            self.pairingChannelTopic = nil
+        }
         let newlyFetchedCouple = try await supabase.linkPartner(code: code)
         currentCouple = newlyFetchedCouple
         guard let user = currentUser else { return }
@@ -546,7 +566,7 @@ final class AppStateManager {
             try await supabase.unpairCouple()
 
             // Reset local state so routing returns to pairing flow.
-            cancelRealtimeListeners()
+            await cancelRealtimeListeners()
             currentCouple = nil
             partnerProfile = nil
             memories.removeAll()
@@ -608,32 +628,45 @@ final class AppStateManager {
     /// transitions automatically when the other person enters their code.
     private func subscribeToCoupleLink() {
         guard let userId = currentUser?.id else { return }
+        let topic = "couple-link-\(userId)"
         pairingListenerTask?.cancel()
+        pairingListenerTask = nil
+        pairingChannelTopic = topic
+
         pairingListenerTask = Task {
-            let channel = supabase.client.realtimeV2
-                .channel("couple-link-\(userId)")
+            let channel = await supabase.preparedRealtimeChannel(topic)
+            guard !Task.isCancelled else { return }
+
             let inserts = channel.postgresChange(
                 InsertAction.self, schema: "public", table: "couples"
             )
+
+            let consumeTask = Task {
+                for await _ in inserts {
+                    guard !Task.isCancelled else { return }
+                    if let couple = try? await supabase.fetchCurrentCouple() {
+                        currentCouple = couple
+                        await loadPartnerProfile()
+                        await loadMemories()
+                        subscribeToPartnerProfile()
+                        subscribeToMemories()
+                        await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
+                    }
+                    return
+                }
+            }
+
             do {
                 try await channel.subscribeWithError()
             } catch {
+                consumeTask.cancel()
                 print("🚨 Couple-link subscribe failed: \(error)")
-            }
-            defer { Task { await self.supabase.client.realtimeV2.removeChannel(channel) } }
-
-            for await _ in inserts {
-                guard !Task.isCancelled else { return }
-                if let couple = try? await supabase.fetchCurrentCouple() {
-                    currentCouple = couple
-                    await loadPartnerProfile()
-                    await loadMemories()
-                    subscribeToPartnerProfile()
-                    subscribeToMemories()
-                    await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
-                }
+                await supabase.tearDownRealtimeChannel(topic)
                 return
             }
+
+            await consumeTask.value
+            await supabase.tearDownRealtimeChannel(topic)
         }
     }
 
@@ -642,10 +675,15 @@ final class AppStateManager {
     private func subscribeToMemories() {
         guard let coupleId = currentCouple?.id else { return }
 
+        let topic = "couple-memories-\(coupleId)"
         memoriesListenerTask?.cancel()
+        memoriesListenerTask = nil
+        memoriesChannelTopic = topic
+
         memoriesListenerTask = Task {
-            let channel = supabase.client.realtimeV2
-                .channel("couple-memories-\(coupleId)")
+            let channel = await supabase.preparedRealtimeChannel(topic)
+            guard !Task.isCancelled else { return }
+
             let filter = "couple_id=eq.\(coupleId)"
             let inserts = channel.postgresChange(
                 InsertAction.self, schema: "public", table: "memories", filter: filter
@@ -656,34 +694,41 @@ final class AppStateManager {
             let deletes = channel.postgresChange(
                 DeleteAction.self, schema: "public", table: "memories", filter: filter
             )
+
+            let consumeTask = Task {
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask {
+                        for await _ in inserts {
+                            guard !Task.isCancelled else { return }
+                            await self.loadMemories()
+                        }
+                    }
+                    group.addTask {
+                        for await _ in updates {
+                            guard !Task.isCancelled else { return }
+                            await self.loadMemories()
+                        }
+                    }
+                    group.addTask {
+                        for await _ in deletes {
+                            guard !Task.isCancelled else { return }
+                            await self.loadMemories()
+                        }
+                    }
+                }
+            }
+
             do {
                 try await channel.subscribeWithError()
             } catch {
+                consumeTask.cancel()
                 print("🚨 Memories subscribe failed: \(error)")
+                await supabase.tearDownRealtimeChannel(topic)
                 return
             }
-            defer { Task { await self.supabase.client.realtimeV2.removeChannel(channel) } }
 
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask {
-                    for await _ in inserts {
-                        guard !Task.isCancelled else { return }
-                        await self.loadMemories()
-                    }
-                }
-                group.addTask {
-                    for await _ in updates {
-                        guard !Task.isCancelled else { return }
-                        await self.loadMemories()
-                    }
-                }
-                group.addTask {
-                    for await _ in deletes {
-                        guard !Task.isCancelled else { return }
-                        await self.loadMemories()
-                    }
-                }
-            }
+            await consumeTask.value
+            await supabase.tearDownRealtimeChannel(topic)
         }
     }
 
@@ -693,29 +738,41 @@ final class AppStateManager {
         guard let couple = currentCouple, let myId = currentUser?.id else { return }
         let partnerId = couple.user1Id == myId ? couple.user2Id : couple.user1Id
 
+        let topic = "partner-profile-\(partnerId)"
         partnerLocationListenerTask?.cancel()
+        partnerLocationListenerTask = nil
+        partnerProfileChannelTopic = topic
+
         partnerLocationListenerTask = Task {
-            let channel = supabase.client.realtimeV2
-                .channel("partner-profile-\(partnerId)")
+            let channel = await supabase.preparedRealtimeChannel(topic)
+            guard !Task.isCancelled else { return }
+
             let updates = channel.postgresChange(
                 UpdateAction.self,
                 schema: "public",
                 table: "profiles",
                 filter: "id=eq.\(partnerId)"
             )
+
+            let consumeTask = Task {
+                for await _ in updates {
+                    guard !Task.isCancelled else { return }
+                    await loadPartnerProfile()
+                    await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
+                }
+            }
+
             do {
                 try await channel.subscribeWithError()
             } catch {
+                consumeTask.cancel()
                 print("🚨 Partner-profile subscribe failed: \(error)")
+                await supabase.tearDownRealtimeChannel(topic)
                 return
             }
-            defer { Task { await self.supabase.client.realtimeV2.removeChannel(channel) } }
 
-            for await _ in updates {
-                guard !Task.isCancelled else { return }
-                await loadPartnerProfile()
-                await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
-            }
+            await consumeTask.value
+            await supabase.tearDownRealtimeChannel(topic)
         }
     }
 

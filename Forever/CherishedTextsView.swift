@@ -107,8 +107,16 @@ struct CherishedTextsView: View {
             await startSyncAndRealtime()
         }
         .onDisappear {
-            realtimeTask?.cancel()
+            let task = realtimeTask
             realtimeTask = nil
+            Task {
+                task?.cancel()
+                if let coupleId = state.currentCouple?.id {
+                    await SupabaseManager.shared.tearDownRealtimeChannel(
+                        "cherished-texts-\(coupleId.uuidString)"
+                    )
+                }
+            }
         }
     }
 
@@ -198,6 +206,9 @@ struct CherishedTextsView: View {
 
         guard let coupleId = state.currentCouple?.id else { return }
 
+        await SupabaseManager.shared.tearDownRealtimeChannel(
+            "cherished-texts-\(coupleId.uuidString)"
+        )
         await CherishedTextSync.mergeRemoteAndPushLocal(coupleId: coupleId)
 
         realtimeTask = SupabaseManager.shared.listenForCherishedTextChanges(coupleId: coupleId) {

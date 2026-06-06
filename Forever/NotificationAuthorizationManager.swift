@@ -52,4 +52,40 @@ enum NotificationAuthorizationManager {
         _ = try? await center.requestAuthorization(options: [.provisional])
         await registerForRemoteIfEligible()
     }
+
+    /// Shows the system notification prompt, or opens Settings when permission was already decided.
+    static func handlePermissionTap() async {
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+
+        switch settings.authorizationStatus {
+        case .notDetermined:
+            let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+            if granted {
+                await registerForRemoteIfEligible()
+            }
+        default:
+            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+            await UIApplication.shared.open(url)
+        }
+    }
+
+    /// Short label for the Me tab permissions row.
+    static func permissionStatusLabel() async -> String {
+        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        switch status {
+        case .notDetermined:
+            return "Not Set"
+        case .denied:
+            return "Off"
+        case .authorized:
+            return "On"
+        case .provisional:
+            return "Provisional"
+        case .ephemeral:
+            return "On"
+        @unknown default:
+            return "Unknown"
+        }
+    }
 }

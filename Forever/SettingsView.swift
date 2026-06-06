@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit
 import WidgetKit
 import PhotosUI
 import UIKit
@@ -20,6 +21,8 @@ private enum DistanceUnitOption: String, CaseIterable {
 struct SettingsView: View {
     @Environment(AppStateManager.self) private var state
     @Environment(SubscriptionManager.self) private var subscription
+    @Environment(\.openURL) private var openURL
+    @Environment(\.requestReview) private var requestReview
     private var ambientData = AmbientDataManager.shared
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @State private var displayName = ""
@@ -34,8 +37,9 @@ struct SettingsView: View {
     @State private var isUploadingAvatar = false
     @State private var avatarError: String?
     @State private var showPaywall = false
-    @State private var showCustomerCenter = false
     @State private var subscriptionAlert: String?
+    @State private var unavailableActionAlert: String?
+    @State private var notificationStatusLabel = "Not Set"
 
     private var normalizedDistanceUnit: String {
         DistanceUnitOption(rawValue: distanceUnit)?.rawValue ?? DistanceUnitOption.miles.rawValue
@@ -134,9 +138,6 @@ struct SettingsView: View {
                                 .font(ForeverFont.caption())
                                 .foregroundStyle(.secondary)
                         }
-                        Button("Manage Subscription") {
-                            showCustomerCenter = true
-                        }
                     } else {
                         Text("Unlock unlimited memories, widgets, and more.")
                             .font(ForeverFont.subheader(.subheadline))
@@ -168,38 +169,77 @@ struct SettingsView: View {
                     .pickerStyle(.menu)
                 }
 
-                Section("Library") {
-                    NavigationLink {
-                        ArchiveView(embedded: true)
-                    } label: {
-                        Label("Drawing Archive", systemImage: "square.grid.2x2.fill")
-                    }
-                }
-
                 Section("Permissions") {
                     Button {
-                        // Notifications action wired later.
+                        Task {
+                            await NotificationAuthorizationManager.handlePermissionTap()
+                            await refreshNotificationStatusLabel()
+                        }
                     } label: {
-                        permissionRow(
+                        settingsActionRow(
                             title: "Notifications",
-                            systemImage: "bell.fill"
+                            status: notificationStatusLabel
                         )
                     }
 
                     Button {
                         ambientData.handleLocationPermissionTap()
                     } label: {
-                        permissionRow(
+                        settingsActionRow(
                             title: "Location Permission",
-                            systemImage: "location.fill",
                             status: ambientData.locationPermissionStatusLabel
                         )
                     }
                 }
 
-                Section("About") {
-                    Link("Terms of Service", destination: URL(string: "https://apple.com")!)
-                    Link("Privacy Policy", destination: URL(string: "https://apple.com")!)
+                Section("Library") {
+                    NavigationLink {
+                        ArchiveView(embedded: true)
+                    } label: {
+                        Text("Drawing Archive")
+                    }
+                }
+
+                Section("App") {
+                    settingsLinkRow(title: "Manage Subscription") {
+                        openURL(AppSupportConfiguration.manageSubscriptionsURL)
+                    }
+
+                    settingsLinkRow(title: "Rate the App") {
+                        requestReview()
+                    }
+                }
+
+                Section("Support") {
+                    settingsLinkRow(
+                        title: "Contact Support",
+                        isEnabled: AppSupportConfiguration.contactSupportURL != nil
+                    ) {
+                        openConfiguredURL(AppSupportConfiguration.contactSupportURL, actionName: "Contact Support")
+                    }
+
+                    settingsLinkRow(
+                        title: "Share Feedback",
+                        isEnabled: AppSupportConfiguration.feedbackMailtoURL != nil
+                    ) {
+                        openConfiguredURL(AppSupportConfiguration.feedbackMailtoURL, actionName: "Share Feedback")
+                    }
+                }
+
+                Section("Legal") {
+                    settingsLinkRow(
+                        title: "Terms of Service",
+                        isEnabled: AppSupportConfiguration.termsOfServiceURL != nil
+                    ) {
+                        openConfiguredURL(AppSupportConfiguration.termsOfServiceURL, actionName: "Terms of Service")
+                    }
+
+                    settingsLinkRow(
+                        title: "Privacy Policy",
+                        isEnabled: AppSupportConfiguration.privacyPolicyURL != nil
+                    ) {
+                        openConfiguredURL(AppSupportConfiguration.privacyPolicyURL, actionName: "Privacy Policy")
+                    }
                 }
 
                 Section("Account Management") {
@@ -255,6 +295,7 @@ struct SettingsView: View {
                     distanceUnit = normalizedDistanceUnit
                 }
                 syncDistanceUnitToWidgetDefaults()
+                Task { await refreshNotificationStatusLabel() }
             }
             .onChange(of: distanceUnit) { _, _ in
                 if distanceUnit != normalizedDistanceUnit {
@@ -282,7 +323,6 @@ struct SettingsView: View {
                     .environment(state)
             }
             .foreverPaywall(isPresented: $showPaywall)
-            .foreverCustomerCenter(isPresented: $showCustomerCenter)
             .alert("Subscription", isPresented: Binding(
                 get: { subscriptionAlert != nil },
                 set: { if !$0 { subscriptionAlert = nil } }
@@ -291,20 +331,27 @@ struct SettingsView: View {
             } message: {
                 Text(subscriptionAlert ?? "")
             }
+            .alert("Not Available", isPresented: Binding(
+                get: { unavailableActionAlert != nil },
+                set: { if !$0 { unavailableActionAlert = nil } }
+            )) {
+                Button("OK", role: .cancel) { unavailableActionAlert = nil }
+            } message: {
+                Text(unavailableActionAlert ?? "")
+            }
             .task {
                 await subscription.refresh()
             }
         }
     }
 
-    /// Shared layout for permission rows in the Me tab.
-    private func permissionRow(
+    /// Shared text-only row layout for Me tab action rows.
+    private func settingsActionRow(
         title: String,
-        systemImage: String,
         status: String? = nil
     ) -> some View {
         HStack {
-            Label(title, systemImage: systemImage)
+            Text(title)
             Spacer()
             if let status {
                 Text(status)
@@ -315,6 +362,33 @@ struct SettingsView: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.tertiary)
         }
+    }
+
+    /// Wraps an action row with consistent enabled/disabled styling.
+    private func settingsLinkRow(
+        title: String,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            settingsActionRow(title: title)
+        }
+        .disabled(!isEnabled)
+        .foregroundStyle(isEnabled ? .primary : .tertiary)
+    }
+
+    /// Opens a configured URL or shows a gentle alert when not yet available.
+    private func openConfiguredURL(_ url: URL?, actionName: String) {
+        guard let url else {
+            unavailableActionAlert = "\(actionName) will be available soon."
+            return
+        }
+        openURL(url)
+    }
+
+    /// Refreshes the notification permission status shown in the Me tab.
+    private func refreshNotificationStatusLabel() async {
+        notificationStatusLabel = await NotificationAuthorizationManager.permissionStatusLabel()
     }
 
     /// Uploads the picked photo and refreshes widget avatars.

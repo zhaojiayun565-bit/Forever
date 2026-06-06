@@ -1116,11 +1116,8 @@ struct IntroFeaturePreviewView: View {
     let partnerName: String
     let action: () -> Void
 
-    private var partnerInitial: String {
-        let trimmed = partnerName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let first = trimmed.first else { return "?" }
-        return String(first).uppercased()
-    }
+    private var myInitial: String { ForeverMonogramBubble.initial(from: myName) }
+    private var partnerInitial: String { ForeverMonogramBubble.initial(from: partnerName) }
 
     var body: some View {
         TabView(selection: $tab) {
@@ -1134,7 +1131,7 @@ struct IntroFeaturePreviewView: View {
                 buttonAction: { withAnimation { tab = 1 } }
             ) {
                 LiveDistanceWidgetPreviewCard(
-                    myLabel: "Me",
+                    myInitial: myInitial,
                     partnerInitial: partnerInitial
                 )
             }

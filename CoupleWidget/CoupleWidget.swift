@@ -302,37 +302,38 @@ extension SimpleEntry {
 
 // MARK: - Distance Widget Components
 
-/// Native contact-style monogram circle (Find My look) with optional profile photo.
+/// Find My-style monogram for the map distance widget (small + medium).
 struct MonogramAvatar: View {
     let name: String
     var image: UIImage?
     var size: CGFloat = 44
 
     private var initial: String {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let first = trimmed.first else { return "?" }
-        return String(first).uppercased()
+        ForeverMonogramBubble.initial(from: name)
     }
 
     var body: some View {
-        Group {
+        ZStack {
+            if image == nil {
+                Circle()
+                    .fill(Color(.systemGray3))
+            }
+
             if let image {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
-            } else {
-                ZStack {
-                    Circle()
-                        .fill(Color(.systemGray3))
-                    Text(initial)
-                        .font(ForeverFont.bold(size: size * 0.42, relativeTo: .headline))
-                        .foregroundStyle(.white)
-                }
+            }
+
+            if image == nil {
+                Text(initial)
+                    .font(ForeverFont.bold(size: size * 0.3, relativeTo: .headline))
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
             }
         }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-        .shadow(color: .black.opacity(0.25), radius: 4, x: 0, y: 2)
+        .foreverMonogramChrome(size: size, style: .glassDark)
     }
 }
 
@@ -572,9 +573,6 @@ struct LockScreenMessageWidgetView: View {
 struct DistanceLockScreenWidgetView: View {
     var entry: Provider.Entry
 
-    var myInitial: String { String(entry.myName.prefix(1)).uppercased() }
-    var partnerInitial: String { String(entry.partnerName.prefix(1)).uppercased() }
-
     var distanceText: String { entry.lockScreenDistanceText }
 
     // Calculate dynamic spacing based on distance.
@@ -607,12 +605,11 @@ struct DistanceLockScreenWidgetView: View {
 
             // Bottom Row: Initials dynamically moving closer to the heart
             HStack(spacing: dynamicSpacing) {
-                ZStack {
-                    Circle().stroke(lineWidth: 2.2)
-                    Text(myInitial)
-                        .font(ForeverFont.bold(size: 14, relativeTo: .subheadline))
-                }
-                .frame(width: 26, height: 26)
+                ForeverMonogramBubble(
+                    name: entry.myName,
+                    size: 26,
+                    style: .glassDark
+                )
 
                 // Dashed line and Heart
                 HStack(spacing: 2) {
@@ -629,12 +626,11 @@ struct DistanceLockScreenWidgetView: View {
                         .frame(width: dynamicSpacing > 5 ? dynamicSpacing - 5 : 0, height: 1)
                 }
 
-                ZStack {
-                    Circle().stroke(lineWidth: 2.2)
-                    Text(partnerInitial)
-                        .font(ForeverFont.bold(size: 14, relativeTo: .subheadline))
-                }
-                .frame(width: 26, height: 26)
+                ForeverMonogramBubble(
+                    name: entry.partnerName,
+                    size: 26,
+                    style: .glassDark
+                )
             }
         }
         .containerBackground(for: .widget) { Color.clear }
@@ -656,7 +652,14 @@ struct DaysTogetherWidgetView: View {
             }
         }
         .containerBackground(for: .widget) {
-            family == .accessoryCircular ? Color.clear : Color.black
+            if family == .accessoryCircular {
+                Color.clear
+            } else {
+                ZStack {
+                    Color.black.opacity(0.32)
+                    Color(red: 0.16, green: 0.13, blue: 0.18).opacity(0.58)
+                }
+            }
         }
     }
 
@@ -692,36 +695,34 @@ struct DaysTogetherWidgetView: View {
     private var systemSmallView: some View {
         VStack(spacing: 12) {
             HStack(spacing: 16) {
-                Image(systemName: "person.crop.circle.fill")
-                    .resizable()
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, Color(UIColor.darkGray))
-                    .frame(width: 54, height: 54)
-                    
-                Image(systemName: "person.crop.circle.fill")
-                    .resizable()
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, Color(UIColor.darkGray))
-                    .frame(width: 54, height: 54)
+                ForeverMonogramBubble(
+                    name: entry.myName,
+                    image: entry.myAvatarImage,
+                    size: 54,
+                    style: .glassDark
+                )
+
+                ForeverMonogramBubble(
+                    name: entry.partnerName,
+                    image: entry.partnerAvatarImage,
+                    size: 54,
+                    style: .glassDark
+                )
             }
             .overlay {
                 Image(systemName: "heart.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.pink)
-                    .padding(5)
-                    .background(Color.black)
-                    .clipShape(Circle())
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
             }
-            
+
             VStack(spacing: -2) {
                 Text(dayText)
-                    .font(ForeverFont.header(size: 38, relativeTo: .largeTitle))
+                    .font(ForeverFont.header(size: 30, relativeTo: .largeTitle))
                     .foregroundStyle(.white)
-                
-                Text("DAYS")
-                    .font(ForeverFont.bold(size: 12, relativeTo: .caption))
-                    .foregroundStyle(.gray)
-                    .tracking(1.5)
+
+                Text("Days Together")
+                    .font(ForeverFont.subheader(size: 13, relativeTo: .caption))
+                    .foregroundStyle(.white.opacity(0.75))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

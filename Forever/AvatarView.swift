@@ -1,46 +1,34 @@
 import SwiftUI
 import Kingfisher
 
-/// Circular profile avatar: remote photo when available, otherwise a Find My-style monogram.
+/// Circular profile avatar with glass monogram chrome and optional remote photo.
 struct AvatarView: View {
     let url: URL?
     let name: String
     var localImage: UIImage?
     var size: CGFloat = 64
-
-    private var initial: String {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let first = trimmed.first else { return "?" }
-        return String(first).uppercased()
-    }
+    var style: ForeverMonogramStyle = .glassLight
 
     var body: some View {
         Group {
             if let localImage {
-                Image(uiImage: localImage)
-                    .resizable()
-                    .scaledToFill()
+                ForeverMonogramBubble(
+                    name: name,
+                    image: localImage,
+                    size: size,
+                    style: style
+                )
             } else if let url {
                 KFImage.url(url)
-                    .placeholder { monogramFallback }
+                    .placeholder {
+                        ForeverMonogramBubble(name: name, size: size, style: style)
+                    }
                     .resizable()
                     .scaledToFill()
+                    .foreverMonogramChrome(size: size, style: style)
             } else {
-                monogramFallback
+                ForeverMonogramBubble(name: name, size: size, style: style)
             }
-        }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-        .shadow(color: .black.opacity(0.25), radius: 4, x: 0, y: 2)
-    }
-
-    private var monogramFallback: some View {
-        ZStack {
-            Circle()
-                .fill(Color(.systemGray3))
-            Text(initial)
-                .font(ForeverFont.bold(size: size * 0.42, relativeTo: .headline))
-                .foregroundStyle(.white)
         }
     }
 }

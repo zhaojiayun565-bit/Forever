@@ -249,12 +249,14 @@ struct DaysTogetherHeroCard: View {
                     url: state.currentUser?.avatarUrl.flatMap { URL(string: $0) },
                     name: state.currentUser?.displayName ?? "Me",
                     localImage: state.myAvatarImage,
-                    size: 72
+                    size: 72,
+                    style: .glassDark
                 )
                 AvatarView(
                     url: state.partnerProfile?.avatarUrl.flatMap { URL(string: $0) },
                     name: state.partnerProfile?.displayName ?? "Partner",
-                    size: 72
+                    size: 72,
+                    style: .glassDark
                 )
             }
             .overlay {

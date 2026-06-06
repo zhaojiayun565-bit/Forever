@@ -3,13 +3,13 @@ import SwiftUI
 // MARK: - Configuration
 
 struct LiveDistanceClosingAnimationConfiguration {
-    var startDistanceKm: Int = 500
-    var animationDuration: TimeInterval = 9
+    var startDistanceKm: Int = 250
+    var animationDuration: TimeInterval = 4
     var togetherPauseDuration: TimeInterval = 1.8
     var resetDuration: TimeInterval = 0.4
     var resetPauseDuration: TimeInterval = 0.6
     var avatarSize: CGFloat = 52
-    var heartClusterWidth: CGFloat = 28
+    var heartWidth: CGFloat = 14
     var minConnectorGap: CGFloat = 2
 }
 
@@ -18,7 +18,6 @@ struct LiveDistanceClosingAnimationConfiguration {
 @Observable
 final class LiveDistanceClosingAnimationViewModel {
     var animationProgress: CGFloat = 0
-    var showTogetherLabel = false
 
     let configuration: LiveDistanceClosingAnimationConfiguration
 
@@ -28,20 +27,21 @@ final class LiveDistanceClosingAnimationViewModel {
         self.configuration = configuration
     }
 
-    var currentDistanceKm: Int {
-        Int(round(Double(configuration.startDistanceKm) * Double(1 - animationProgress)))
-    }
-
     static let togetherMessage = "We're together!"
 
-    var distanceLabel: String {
-        showTogetherLabel ? Self.togetherMessage : "\(currentDistanceKm) km"
+    /// Continuous distance value tied to animation progress for Animatable interpolation.
+    var animatedDistanceKm: Double {
+        Double(configuration.startDistanceKm) * Double(1 - animationProgress)
     }
 
-    /// Maps progress to the half-gap between each avatar and the heart cluster.
+    var isTogether: Bool {
+        animatedDistanceKm <= 0
+    }
+
+    /// Maps progress to the half-gap between each avatar and the center heart.
     func connectorHalfGap(totalWidth: CGFloat, horizontalPadding: CGFloat) -> CGFloat {
         let usableWidth = totalWidth - horizontalPadding * 2
-        let occupiedByAvatars = configuration.avatarSize * 2 + configuration.heartClusterWidth
+        let occupiedByAvatars = configuration.avatarSize * 2 + configuration.heartWidth
         let maxGap = max((usableWidth - occupiedByAvatars) / 2, configuration.minConnectorGap)
         let minGap = configuration.minConnectorGap
         return maxGap - (maxGap - minGap) * animationProgress
@@ -52,14 +52,12 @@ final class LiveDistanceClosingAnimationViewModel {
 
         if reduceMotion {
             animationProgress = 1
-            showTogetherLabel = true
             return
         }
 
         loopTask = Task { @MainActor in
             while !Task.isCancelled {
                 animationProgress = 0
-                showTogetherLabel = false
 
                 withAnimation(.easeInOut(duration: configuration.animationDuration)) {
                     animationProgress = 1
@@ -69,15 +67,9 @@ final class LiveDistanceClosingAnimationViewModel {
 
                 guard !Task.isCancelled else { return }
 
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    showTogetherLabel = true
-                }
-
                 try? await Task.sleep(for: .seconds(configuration.togetherPauseDuration))
 
                 guard !Task.isCancelled else { return }
-
-                showTogetherLabel = false
 
                 withAnimation(.easeInOut(duration: configuration.resetDuration)) {
                     animationProgress = 0
@@ -94,69 +86,80 @@ final class LiveDistanceClosingAnimationViewModel {
     }
 }
 
-// MARK: - Subviews
+// MARK: - Distance Counter
 
-/// Monogram circle used in the distance closing row.
-struct DistanceMonogramBubble: View {
-    let label: String
-    var size: CGFloat = 52
+/// Smoothly interpolates the displayed km value by animating progress via animatableData.
+struct DistanceCounter: View, Animatable {
+    var progress: CGFloat
+    var startDistanceKm: Double
+    var togetherMessage: String
 
-    var body: some View {
-        ZStack {
-            Circle()
-                .strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5)
-                .background(Circle().fill(Color.white.opacity(0.12)))
-
-            Text(label)
-                .font(ForeverFont.bold(size: size * 0.3, relativeTo: .subheadline))
-                .foregroundStyle(.white)
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
-        }
-        .frame(width: size, height: size)
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
     }
-}
 
-/// Dashed connector segment whose width shrinks as partners move closer.
-struct DistanceConnectorSegment: View {
-    let width: CGFloat
+    private var distanceKm: Double {
+        startDistanceKm * Double(1 - progress)
+    }
 
     var body: some View {
-        Rectangle()
-            .fill(Color.clear)
-            .frame(width: max(0, width), height: 1.5)
-            .overlay {
-                if width > 0 {
-                    Path { path in
-                        path.move(to: CGPoint(x: 0, y: 0.75))
-                        path.addLine(to: CGPoint(x: width, y: 0.75))
-                    }
-                    .stroke(
-                        Color.white.opacity(0.5),
-                        style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [4, 4])
-                    )
+        HStack(spacing: 4) {
+            if distanceKm > 0 {
+                Text("Our distance:")
+                    .font(ForeverFont.subheader(size: 15, relativeTo: .subheadline))
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+
+            Group {
+                if distanceKm <= 0 {
+                    Text(togetherMessage)
+                } else {
+                    Text("\(Int(distanceKm.rounded())) km")
                 }
             }
+            .font(ForeverFont.bold(size: 15, relativeTo: .subheadline))
+            .foregroundStyle(.white)
+            .monospacedDigit()
+        }
     }
 }
 
-/// Two overlapping hearts at the center of the distance row.
-struct DistanceHeartCluster: View {
-    var size: CGFloat = 11
+// MARK: - Subviews
+
+/// Horizontal dashed line shape; width is controlled via frame clipping.
+struct DashedConnectorLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: 0, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.width, y: rect.midY))
+        return path
+    }
+}
+
+private struct DashedConnectorLineView: View {
+    let width: CGFloat
+
+    private var dashStyle: StrokeStyle {
+        StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [4, 4])
+    }
 
     var body: some View {
-        ZStack {
-            Image(systemName: "heart.fill")
-                .font(.system(size: size))
-                .foregroundStyle(.white.opacity(0.9))
-                .offset(x: -3)
+        DashedConnectorLine()
+            .stroke(Color.white.opacity(0.5), style: dashStyle)
+            .frame(width: max(0, width), height: 1.5)
+    }
+}
 
-            Image(systemName: "heart.fill")
-                .font(.system(size: size))
-                .foregroundStyle(.white.opacity(0.9))
-                .offset(x: 3)
-        }
-        .frame(width: 28, height: 20)
+/// Single center heart matching the lock screen distance widget.
+struct DistanceCenterHeart: View {
+    var size: CGFloat = 10
+
+    var body: some View {
+        Image(systemName: "heart.fill")
+            .font(.system(size: size))
+            .foregroundStyle(.white.opacity(0.9))
+            .frame(width: 14, height: 14)
     }
 }
 
@@ -164,7 +167,7 @@ struct DistanceHeartCluster: View {
 
 /// Animated distance row: two avatars converge on a center heart as km counts down.
 struct LiveDistanceClosingAnimationView: View {
-    let myLabel: String
+    let myInitial: String
     let partnerInitial: String
     var viewModel: LiveDistanceClosingAnimationViewModel
 
@@ -182,15 +185,25 @@ struct LiveDistanceClosingAnimationView: View {
                 let avatarSize = viewModel.configuration.avatarSize
 
                 HStack(spacing: 0) {
-                    DistanceMonogramBubble(label: myLabel, size: avatarSize)
+                    ForeverMonogramBubble(
+                        name: myInitial,
+                        label: myInitial,
+                        size: avatarSize,
+                        style: .glassDark
+                    )
 
-                    DistanceConnectorSegment(width: halfGap)
+                    DashedConnectorLineView(width: max(0, halfGap))
 
-                    DistanceHeartCluster()
+                    DistanceCenterHeart()
 
-                    DistanceConnectorSegment(width: halfGap)
+                    DashedConnectorLineView(width: max(0, halfGap))
 
-                    DistanceMonogramBubble(label: partnerInitial, size: avatarSize)
+                    ForeverMonogramBubble(
+                        name: partnerInitial,
+                        label: partnerInitial,
+                        size: avatarSize,
+                        style: .glassDark
+                    )
                 }
                 .padding(.horizontal, horizontalPadding)
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .center)
@@ -201,35 +214,28 @@ struct LiveDistanceClosingAnimationView: View {
         }
     }
 
-    @ViewBuilder
     private var distanceLabel: some View {
-        if viewModel.showTogetherLabel {
-            Text(LiveDistanceClosingAnimationViewModel.togetherMessage)
-                .font(ForeverFont.bold(size: 15, relativeTo: .subheadline))
-                .foregroundStyle(.white)
-                .accessibilityLabel(LiveDistanceClosingAnimationViewModel.togetherMessage)
-        } else {
-            HStack(spacing: 4) {
-                Text("Our distance:")
-                    .font(ForeverFont.subheader(size: 15, relativeTo: .subheadline))
-                    .foregroundStyle(.white.opacity(0.75))
+        DistanceCounter(
+            progress: viewModel.animationProgress,
+            startDistanceKm: Double(viewModel.configuration.startDistanceKm),
+            togetherMessage: LiveDistanceClosingAnimationViewModel.togetherMessage
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabelText)
+    }
 
-                Text(viewModel.distanceLabel)
-                    .font(ForeverFont.bold(size: 15, relativeTo: .subheadline))
-                    .foregroundStyle(.white)
-                    .contentTransition(.numericText())
-                    .animation(.easeInOut(duration: 0.2), value: viewModel.distanceLabel)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Our distance: \(viewModel.distanceLabel)")
+    private var accessibilityLabelText: String {
+        if viewModel.isTogether {
+            return LiveDistanceClosingAnimationViewModel.togetherMessage
         }
+        return "Our distance: \(Int(viewModel.animatedDistanceKm.rounded())) kilometers"
     }
 
     private var accessibilityDescription: String {
-        if viewModel.showTogetherLabel {
+        if viewModel.isTogether {
             return "You and your partner are together."
         }
-        return "You are \(viewModel.currentDistanceKm) kilometers apart and moving closer."
+        return "You are \(Int(viewModel.animatedDistanceKm.rounded())) kilometers apart and moving closer."
     }
 }
 
@@ -237,7 +243,7 @@ struct LiveDistanceClosingAnimationView: View {
 
 /// Faux lock-screen widget card wrapping the closing-distance animation.
 struct LiveDistanceWidgetPreviewCard: View {
-    let myLabel: String
+    let myInitial: String
     let partnerInitial: String
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -245,7 +251,7 @@ struct LiveDistanceWidgetPreviewCard: View {
 
     var body: some View {
         LiveDistanceClosingAnimationView(
-            myLabel: myLabel,
+            myInitial: myInitial,
             partnerInitial: partnerInitial,
             viewModel: viewModel
         )

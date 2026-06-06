@@ -167,6 +167,8 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.menu)
+                    .foregroundStyle(.white)
+                    .tint(.white)
                 }
 
                 Section("Permissions") {
@@ -178,18 +180,22 @@ struct SettingsView: View {
                     } label: {
                         settingsActionRow(
                             title: "Notifications",
-                            status: notificationStatusLabel
+                            status: notificationStatusLabel,
+                            titleColor: .white
                         )
                     }
+                    .buttonStyle(.plain)
 
                     Button {
                         ambientData.handleLocationPermissionTap()
                     } label: {
                         settingsActionRow(
                             title: "Location Permission",
-                            status: ambientData.locationPermissionStatusLabel
+                            status: ambientData.locationPermissionStatusLabel,
+                            titleColor: .white
                         )
                     }
+                    .buttonStyle(.plain)
                 }
 
                 Section("Library") {
@@ -348,10 +354,17 @@ struct SettingsView: View {
     /// Shared text-only row layout for Me tab action rows.
     private func settingsActionRow(
         title: String,
-        status: String? = nil
+        status: String? = nil,
+        titleColor: Color? = nil
     ) -> some View {
         HStack {
-            Text(title)
+            Group {
+                if let titleColor {
+                    Text(title).foregroundStyle(titleColor)
+                } else {
+                    Text(title)
+                }
+            }
             Spacer()
             if let status {
                 Text(status)

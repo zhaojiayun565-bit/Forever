@@ -92,11 +92,34 @@ struct ArchiveView: View {
                 Text(authorLabel(for: drawing))
                     .font(ForeverFont.subheader(.subheadline))
                     .foregroundStyle(.primary)
-                Text(drawing.createdAt, style: .relative)
+                Text(relativeTimeAgo(from: drawing.createdAt))
                     .font(ForeverFont.caption())
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// Coarse relative time: days, hours, or minutes (no seconds), suffixed with "ago".
+    private func relativeTimeAgo(from date: Date) -> String {
+        let interval = max(0, Date().timeIntervalSince(date))
+        let days = Int(interval / 86_400)
+        if days >= 1 {
+            return days == 1
+                ? String(localized: "1 day ago")
+                : String(localized: "\(days) days ago")
+        }
+
+        let hours = Int(interval / 3_600)
+        if hours >= 1 {
+            return hours == 1
+                ? String(localized: "1 hour ago")
+                : String(localized: "\(hours) hours ago")
+        }
+
+        let minutes = max(1, Int(interval / 60))
+        return minutes == 1
+            ? String(localized: "1 minute ago")
+            : String(localized: "\(minutes) minutes ago")
     }
 
     /// "You" when the current user sent it; otherwise the partner's name.

@@ -122,7 +122,7 @@ struct IntroJourneySummaryView: View {
     var body: some View {
         VStack(spacing: OnboardingLayout.bodyStackSpacing) {
             VStack(spacing: 12) {
-                Text("Your journey starts now.")
+                Text("Your journey with your partner starts now.")
                     .font(OnboardingLayout.titleFont)
                     .multilineTextAlignment(.center)
 
@@ -211,7 +211,7 @@ struct IntroUpfrontInvestmentView: View {
 
             Spacer(minLength: 8)
 
-            IntroPrimaryButton(title: "Makes sense to me", action: action)
+            IntroPrimaryButton(title: "Makes sense", action: action)
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
         }
     }

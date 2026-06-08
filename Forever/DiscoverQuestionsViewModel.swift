@@ -12,38 +12,60 @@ final class DiscoverQuestionsViewModel {
     var answeredCounts: [UUID: Int] = [:]
     var streakCount = 0
     var isLoading = false
+    var hasAnsweredAnyCategoryQuestionToday = false
+
+    private var coupleId: UUID?
+    private var questionsById: [UUID: Question] = [:]
+    private var realtimeObserverToken: UUID?
 
     init(supabase: SupabaseManager = .shared) {
         self.supabase = supabase
     }
 
+    /// Detaches from the shared couple-answers realtime hub.
+    func stopRealtime() async {
+        await supabase.stopObservingCoupleAnswerChanges(token: realtimeObserverToken)
+        realtimeObserverToken = nil
+    }
+
     /// Fetches categories and per-category question/answer counts.
     func load(couple: Couple?, currentUserId: UUID?) async {
-        guard couple != nil else {
+        await stopRealtime()
+
+        guard let couple else {
             categories = []
             questionCounts = [:]
             answeredCounts = [:]
             streakCount = 0
+            hasAnsweredAnyCategoryQuestionToday = false
+            coupleId = nil
+            questionsById = [:]
             return
         }
 
+        coupleId = couple.id
         isLoading = true
         defer { isLoading = false }
 
         do {
             categories = try await supabase.fetchQuestionCategories()
-            streakCount = couple?.questionsStreakCount ?? 0
+            streakCount = couple.questionsStreakCount
+
+            let pacingInputs = try await supabase.fetchCategoryPacingInputs(coupleId: couple.id)
+            questionsById = Dictionary(uniqueKeysWithValues: pacingInputs.questions.map { ($0.id, $0) })
+            hasAnsweredAnyCategoryQuestionToday = CategoryQuestionPacing.hasAnsweredAnyCategoryQuestionToday(
+                answers: pacingInputs.answers,
+                questionsById: questionsById
+            )
 
             var counts: [UUID: Int] = [:]
             var answered: [UUID: Int] = [:]
-
-            let allAnswers = try await supabase.fetchCoupleAnswers(coupleId: couple!.id)
 
             for category in categories {
                 let questions = try await supabase.fetchQuestions(categoryId: category.id)
                 counts[category.id] = questions.count
                 let questionIds = Set(questions.map(\.id))
-                let revealed = allAnswers.filter {
+                let revealed = pacingInputs.answers.filter {
                     questionIds.contains($0.questionId) && $0.isRevealed
                 }.count
                 answered[category.id] = revealed
@@ -51,8 +73,40 @@ final class DiscoverQuestionsViewModel {
 
             questionCounts = counts
             answeredCounts = answered
+            await startRealtime(coupleId: couple.id)
         } catch {
             print("🚨 Failed to load question categories: \(error)")
+        }
+    }
+
+    private func startRealtime(coupleId: UUID) async {
+        realtimeObserverToken = await supabase.observeCoupleAnswerChanges(coupleId: coupleId) { [weak self] in
+            await self?.refreshPacing()
+        }
+    }
+
+    private func refreshPacing() async {
+        guard let coupleId else { return }
+        do {
+            let pacingInputs = try await supabase.fetchCategoryPacingInputs(coupleId: coupleId)
+            questionsById = Dictionary(uniqueKeysWithValues: pacingInputs.questions.map { ($0.id, $0) })
+            hasAnsweredAnyCategoryQuestionToday = CategoryQuestionPacing.hasAnsweredAnyCategoryQuestionToday(
+                answers: pacingInputs.answers,
+                questionsById: questionsById
+            )
+
+            var answered: [UUID: Int] = [:]
+            for category in categories {
+                let questions = try await supabase.fetchQuestions(categoryId: category.id)
+                let questionIds = Set(questions.map(\.id))
+                let revealed = pacingInputs.answers.filter {
+                    questionIds.contains($0.questionId) && $0.isRevealed
+                }.count
+                answered[category.id] = revealed
+            }
+            answeredCounts = answered
+        } catch {
+            print("🚨 Failed to refresh category pacing: \(error)")
         }
     }
 }
@@ -67,29 +121,40 @@ final class CategoryQuestionsViewModel {
     var questions: [Question] = []
     var answers: [UUID: CoupleAnswer] = [:]
     var isLoading = false
+    var hasAnsweredAnyCategoryQuestionToday = false
+    var todaysDailyQuestionId: UUID?
 
     private var coupleId: UUID?
     private var currentUserId: UUID?
-    nonisolated(unsafe) private var realtimeObserverToken: UUID?
+    private var questionsById: [UUID: Question] = [:]
+    private var realtimeObserverToken: UUID?
 
     init(category: QuestionCategory, supabase: SupabaseManager = .shared) {
         self.category = category
         self.supabase = supabase
     }
 
-    deinit {
-        let token = realtimeObserverToken
-        Task { await supabase.stopObservingCoupleAnswerChanges(token: token) }
+    var isGloballyLocked: Bool { hasAnsweredAnyCategoryQuestionToday }
+
+    var sortedQuestions: [Question] {
+        CategoryQuestionPacing.sortedQuestions(questions)
+    }
+
+    /// Detaches from the shared couple-answers realtime hub.
+    func stopRealtime() async {
+        await supabase.stopObservingCoupleAnswerChanges(token: realtimeObserverToken)
+        realtimeObserverToken = nil
     }
 
     /// Fetches questions and answer rows for the category.
     func load(couple: Couple?, currentUserId: UUID?) async {
-        await supabase.stopObservingCoupleAnswerChanges(token: realtimeObserverToken)
-        realtimeObserverToken = nil
+        await stopRealtime()
 
         guard let couple, let currentUserId else {
             questions = []
             answers = [:]
+            hasAnsweredAnyCategoryQuestionToday = false
+            todaysDailyQuestionId = nil
             return
         }
 
@@ -100,10 +165,22 @@ final class CategoryQuestionsViewModel {
 
         do {
             questions = try await supabase.fetchQuestions(categoryId: category.id)
-            let allAnswers = try await supabase.fetchCoupleAnswers(coupleId: couple.id)
+            let pacingInputs = try await supabase.fetchCategoryPacingInputs(coupleId: couple.id)
+            questionsById = Dictionary(uniqueKeysWithValues: pacingInputs.questions.map { ($0.id, $0) })
+            hasAnsweredAnyCategoryQuestionToday = CategoryQuestionPacing.hasAnsweredAnyCategoryQuestionToday(
+                answers: pacingInputs.answers,
+                questionsById: questionsById
+            )
+
+            let dailyPool = try await supabase.fetchDailyQuestions()
+            todaysDailyQuestionId = CategoryQuestionPacing.todaysDailyQuestionId(
+                dailyPool: dailyPool,
+                coupleId: couple.id
+            )
+
             let questionIds = Set(questions.map(\.id))
             answers = Dictionary(
-                uniqueKeysWithValues: allAnswers
+                uniqueKeysWithValues: pacingInputs.answers
                     .filter { questionIds.contains($0.questionId) }
                     .map { ($0.questionId, $0) }
             )
@@ -121,6 +198,18 @@ final class CategoryQuestionsViewModel {
         return .unanswered
     }
 
+    /// Whether a question row should be blurred and untappable.
+    func isQuestionLocked(_ question: Question) -> Bool {
+        CategoryQuestionPacing.isQuestionLocked(
+            question: question,
+            sortedQuestions: sortedQuestions,
+            answers: answers,
+            hasAnsweredAnyCategoryQuestionToday: hasAnsweredAnyCategoryQuestionToday,
+            todaysDailyQuestionId: todaysDailyQuestionId,
+            categoryTitle: category.title
+        )
+    }
+
     /// Submits an answer and updates local state.
     func submitAnswer(questionId: UUID, text: String) async -> Bool {
         do {
@@ -129,6 +218,7 @@ final class CategoryQuestionsViewModel {
                 response: text
             )
             answers[questionId] = updated
+            await refreshAnswers()
             return true
         } catch {
             print("🚨 Failed to submit category answer: \(error)")
@@ -145,10 +235,16 @@ final class CategoryQuestionsViewModel {
     private func refreshAnswers() async {
         guard let coupleId else { return }
         do {
-            let allAnswers = try await supabase.fetchCoupleAnswers(coupleId: coupleId)
+            let pacingInputs = try await supabase.fetchCategoryPacingInputs(coupleId: coupleId)
+            questionsById = Dictionary(uniqueKeysWithValues: pacingInputs.questions.map { ($0.id, $0) })
+            hasAnsweredAnyCategoryQuestionToday = CategoryQuestionPacing.hasAnsweredAnyCategoryQuestionToday(
+                answers: pacingInputs.answers,
+                questionsById: questionsById
+            )
+
             let questionIds = Set(questions.map(\.id))
             answers = Dictionary(
-                uniqueKeysWithValues: allAnswers
+                uniqueKeysWithValues: pacingInputs.answers
                     .filter { questionIds.contains($0.questionId) }
                     .map { ($0.questionId, $0) }
             )

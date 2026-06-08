@@ -755,6 +755,21 @@ final class SupabaseManager: Sendable {
             .value
     }
 
+    /// Fetches the full questions catalog (used for pacing joins).
+    func fetchAllQuestions() async throws -> [Question] {
+        try await client.from(DB.questions)
+            .select()
+            .execute()
+            .value
+    }
+
+    /// Fetches couple answers and the questions catalog for pacing evaluation.
+    func fetchCategoryPacingInputs(coupleId: UUID) async throws -> (answers: [CoupleAnswer], questions: [Question]) {
+        async let answers = fetchCoupleAnswers(coupleId: coupleId)
+        async let questions = fetchAllQuestions()
+        return try await (answers, questions)
+    }
+
     /// Fetches the couple's answer row for a specific question, if it exists.
     func fetchCoupleAnswer(coupleId: UUID, questionId: UUID) async throws -> CoupleAnswer? {
         let rows: [CoupleAnswer] = try await client.from(DB.coupleAnswers)

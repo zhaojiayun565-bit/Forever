@@ -13,10 +13,15 @@ struct QuestionAnswerView: View {
     @State private var response = ""
     @State private var isSubmitting = false
     @State private var showDiscardAlert = false
+    @State private var submitErrorMessage: String?
     @FocusState private var isFocused: Bool
 
     private var revealState: AnswerRevealState {
         viewModel.revealState(for: question.id)
+    }
+
+    private var isSubmissionLocked: Bool {
+        revealState == .unanswered && viewModel.isQuestionLocked(question)
     }
 
     private var answer: CoupleAnswer? {
@@ -84,6 +89,31 @@ struct QuestionAnswerView: View {
 
     private var unansweredContent: some View {
         VStack(spacing: OnboardingLayout.bodyStackSpacing) {
+            if isSubmissionLocked {
+                lockedSubmissionContent
+            } else {
+                editableSubmissionContent
+            }
+        }
+    }
+
+    private var lockedSubmissionContent: some View {
+        VStack(spacing: 12) {
+            Label("Great conversation today!", systemImage: "hourglass")
+                .font(ForeverFont.header(.headline))
+                .foregroundStyle(QuestionsTheme.accent)
+
+            Text("Your next prompt unlocks tomorrow.")
+                .font(ForeverFont.subheader(.subheadline))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, OnboardingLayout.horizontalPadding)
+        }
+        .padding(.top, 8)
+    }
+
+    private var editableSubmissionContent: some View {
+        VStack(spacing: OnboardingLayout.bodyStackSpacing) {
             TextField("Your answer", text: $response, axis: .vertical)
                 .font(ForeverFont.body(.title2))
                 .multilineTextAlignment(.center)
@@ -105,6 +135,14 @@ struct QuestionAnswerView: View {
                 action: submitAnswer
             )
             .padding(.horizontal, OnboardingLayout.horizontalPadding)
+
+            if let submitErrorMessage {
+                Text(submitErrorMessage)
+                    .font(ForeverFont.caption())
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, OnboardingLayout.horizontalPadding)
+            }
         }
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -172,12 +210,17 @@ struct QuestionAnswerView: View {
     }
 
     private func submitAnswer() {
-        guard !trimmedResponse.isEmpty else { return }
+        guard !isSubmissionLocked, !trimmedResponse.isEmpty else { return }
         isSubmitting = true
+        submitErrorMessage = nil
         Task {
             let success = await viewModel.submitAnswer(questionId: question.id, text: trimmedResponse)
             isSubmitting = false
-            if success { dismiss() }
+            if success {
+                dismiss()
+            } else {
+                submitErrorMessage = "Daily category question limit reached."
+            }
         }
     }
 }

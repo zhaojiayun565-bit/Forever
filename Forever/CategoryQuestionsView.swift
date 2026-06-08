@@ -30,21 +30,12 @@ struct CategoryQuestionsView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 16) {
-                        ForEach(viewModel.questions) { question in
-                            NavigationLink {
-                                QuestionAnswerView(
-                                    question: question,
-                                    partnerName: partnerName,
-                                    userId: state.currentUser?.id,
-                                    viewModel: viewModel
-                                )
-                            } label: {
-                                questionCard(question)
-                            }
-                            .buttonStyle(.plain)
+                        ForEach(viewModel.sortedQuestions) { question in
+                            questionRow(question)
                         }
                     }
                     .padding(20)
+                    .globalCategoryLockOverlay(isActive: viewModel.isGloballyLocked)
                 }
             }
         }
@@ -57,6 +48,31 @@ struct CategoryQuestionsView: View {
                 couple: state.currentCouple,
                 currentUserId: state.currentUser?.id
             )
+        }
+        .onDisappear {
+            Task { await viewModel.stopRealtime() }
+        }
+    }
+
+    @ViewBuilder
+    private func questionRow(_ question: Question) -> some View {
+        let locked = viewModel.isQuestionLocked(question)
+
+        if locked {
+            questionCard(question)
+                .questionCardLockOverlay(isLocked: true)
+        } else {
+            NavigationLink {
+                QuestionAnswerView(
+                    question: question,
+                    partnerName: partnerName,
+                    userId: state.currentUser?.id,
+                    viewModel: viewModel
+                )
+            } label: {
+                questionCard(question)
+            }
+            .buttonStyle(.plain)
         }
     }
 

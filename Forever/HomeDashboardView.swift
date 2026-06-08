@@ -199,6 +199,9 @@ struct HomeDashboardView: View {
                     currentUserId: state.currentUser?.id
                 )
             }
+            .onDisappear {
+                Task { await dailyQuestionVM.stopRealtime() }
+            }
             .onChange(of: dailyQuestionVM.revealState) { _, revealState in
                 if revealState == .revealed {
                     Task { await state.refreshCurrentCouple() }

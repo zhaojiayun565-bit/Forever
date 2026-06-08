@@ -197,6 +197,15 @@ struct CoupleAnswer: Codable, Identifiable, Hashable {
         if userId == partnerBId { return partnerBAnsweredAt != nil }
         return false
     }
+
+    /// Whether either partner submitted an answer on the given UTC calendar day.
+    func wasAnsweredOnUTC(day: Date = .now) -> Bool {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return [partnerAAnsweredAt, partnerBAnsweredAt].compactMap { $0 }.contains {
+            calendar.isDate($0, inSameDayAs: day)
+        }
+    }
 }
 
 // MARK: - Archived Drawing

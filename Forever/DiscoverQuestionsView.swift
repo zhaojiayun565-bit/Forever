@@ -6,11 +6,6 @@ struct DiscoverQuestionsView: View {
     @State private var viewModel = DiscoverQuestionsViewModel()
     @State private var showPairingSheet = false
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 16),
-        GridItem(.flexible(), spacing: 16)
-    ]
-
     var body: some View {
         NavigationStack {
             Group {
@@ -28,9 +23,10 @@ struct DiscoverQuestionsView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
 
-                            categoryGrid
+                            categoryList
                         }
                         .padding(20)
+                        .globalCategoryLockOverlay(isActive: viewModel.hasAnsweredAnyCategoryQuestionToday)
                     }
                 }
             }
@@ -42,6 +38,9 @@ struct DiscoverQuestionsView: View {
                     couple: state.currentCouple,
                     currentUserId: state.currentUser?.id
                 )
+            }
+            .onDisappear {
+                Task { await viewModel.stopRealtime() }
             }
             .onChange(of: state.currentCouple?.questionsStreakCount) { _, count in
                 viewModel.streakCount = count ?? 0
@@ -59,15 +58,20 @@ struct DiscoverQuestionsView: View {
         }
     }
 
-    private var categoryGrid: some View {
-        LazyVGrid(columns: columns, spacing: 16) {
+    private var categoryList: some View {
+        VStack(spacing: 16) {
             ForEach(viewModel.categories) { category in
-                NavigationLink {
-                    CategoryQuestionsView(category: category)
-                } label: {
+                if viewModel.hasAnsweredAnyCategoryQuestionToday {
                     categoryCard(category)
+                        .questionCardLockOverlay(isLocked: true)
+                } else {
+                    NavigationLink {
+                        CategoryQuestionsView(category: category)
+                    } label: {
+                        categoryCard(category)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -76,31 +80,36 @@ struct DiscoverQuestionsView: View {
         let total = viewModel.questionCounts[category.id] ?? 0
         let answered = viewModel.answeredCounts[category.id] ?? 0
 
-        return VStack(alignment: .leading, spacing: 8) {
-            Text(category.title)
-                .font(ForeverFont.header(.headline))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-
-            if let description = category.description {
-                Text(description)
-                    .font(ForeverFont.caption())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+        return HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(category.title)
+                    .font(ForeverFont.header(.headline))
+                    .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
+
+                if let description = category.description {
+                    Text(description)
+                        .font(ForeverFont.subheader(.subheadline))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+
+                if total > 0 {
+                    Text("\(answered)/\(total) revealed")
+                        .font(ForeverFont.caption())
+                        .foregroundStyle(QuestionsTheme.accent)
+                }
             }
 
-            Spacer(minLength: 0)
+            Spacer()
 
-            if total > 0 {
-                Text("\(answered)/\(total) revealed")
-                    .font(ForeverFont.caption())
-                    .foregroundStyle(QuestionsTheme.accent)
-            }
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
         }
-        .frame(maxWidth: .infinity, minHeight: 140, alignment: .leading)
-        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 108, alignment: .leading)
+        .padding(20)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .shadow(color: .black.opacity(0.04), radius: 12, x: 0, y: 6)
     }

@@ -44,6 +44,7 @@ enum OnboardingLayout {
     static let horizontalPadding: CGFloat = 40
     static let titleFont = ForeverFont.header(size: 36, relativeTo: .largeTitle)
     static let bodyStackSpacing: CGFloat = 30
+    static let ctaStackSpacing: CGFloat = 12
     static let selectionStackSpacing: CGFloat = 24
     static let selectionRowSpacing: CGFloat = 14
     static let selectionCornerRadius: CGFloat = 20
@@ -66,9 +67,18 @@ enum RelationshipGoal: String, CaseIterable, Identifiable {
         case .neverLosingSpark: "Never losing the spark, no matter the distance"
         case .neverForgettingLittleThings: "Never forgetting the little things"
         case .cherishMemories: "Cherish the memories we make"
-        case .alwaysBeingThere: "Always being there for each other"
+        case .alwaysBeingThere: "Knowing each other on many levels"
         }
     }
+
+    static let displayOrder: [RelationshipGoal] = [
+        .feelingCloserEveryDay,
+        .cherishMemories,
+        .neverLosingSpark,
+        .neverForgettingLittleThings,
+        .alwaysBeingThere,
+        .moreSpontaneousSurprises
+    ]
 }
 
 struct OnboardingView: View {
@@ -183,7 +193,7 @@ struct OnboardingView: View {
                     .transition(standardStepTransition)
                 case .problem:
                     IntroPromptStepView(
-                        title: "Do you ever feel like life gets too busy to truly connect with your partner?",
+                        title: "Do you ever feel like life can sometimes get too busy to truly connect with your partner?",
                         cta: "Yes",
                         action: advance
                     )
@@ -242,7 +252,7 @@ struct OnboardingView: View {
                     IntroPromptStepView(
                         title: "Let's capture your first memory.",
                         subtitle: "Upload a favorite photo and add a quick note. We'll drop it on the map to start your shared journey.",
-                        cta: "Ready",
+                        cta: "I'm ready",
                         action: advance
                     )
                     .transition(standardStepTransition)
@@ -489,21 +499,22 @@ struct IntroWelcomeView: View {
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
             Spacer()
 
-            IntroPrimaryButton(title: "Get Started", action: onGetStarted)
-                .padding(.horizontal, OnboardingLayout.horizontalPadding)
+            VStack(spacing: OnboardingLayout.ctaStackSpacing) {
+                IntroPrimaryButton(title: "Get Started", action: onGetStarted)
 
-            Button(action: onInviteCode) {
-                Text("I have an invite code")
-                    .font(ForeverFont.cta(.headline))
-                    .foregroundStyle(OnboardingIntroTheme.accent)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(OnboardingIntroTheme.accent.opacity(0.6), lineWidth: 1.5)
-                    )
+                Button(action: onInviteCode) {
+                    Text("I have an invite code")
+                        .font(ForeverFont.cta(.headline))
+                        .foregroundStyle(OnboardingIntroTheme.accent)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(OnboardingIntroTheme.accent.opacity(0.6), lineWidth: 1.5)
+                        )
+                }
+                .buttonStyle(BubblyButtonStyle())
             }
-            .buttonStyle(BubblyButtonStyle())
             .padding(.horizontal, OnboardingLayout.horizontalPadding)
             .padding(.bottom, 8)
         }
@@ -731,7 +742,7 @@ struct IntroRelationshipGoalsView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: OnboardingLayout.selectionRowSpacing) {
-                    ForEach(RelationshipGoal.allCases) { goal in
+                    ForEach(RelationshipGoal.displayOrder) { goal in
                         let isSelected = selected.contains(goal)
                         let isDisabled = selected.count >= maxSelections && !isSelected
 
@@ -985,7 +996,7 @@ struct IntroReviewAskView: View {
 
             Spacer()
 
-            IntroPrimaryButton(title: "Next", action: action)
+            IntroPrimaryButton(title: "I'm ready", action: action)
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
         }
         .onAppear {
@@ -994,27 +1005,47 @@ struct IntroReviewAskView: View {
     }
 }
 
+/// Displays selected relationship goals as a slightly tilted, overlapping stack.
+private struct IntroTiltedSelectedGoalsStack: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let goals: [RelationshipGoal]
+
+    private static let tiltAngles: [Double] = [-2.5, 2, -1.5, 2.5, -2, 1.5]
+    private let cardOverlap: CGFloat = 10
+
+    var body: some View {
+        VStack(spacing: -cardOverlap) {
+            ForEach(Array(goals.enumerated()), id: \.element.id) { index, goal in
+                IntroSelectableOptionRow(title: goal.text, isSelected: true)
+                    .rotationEffect(
+                        .degrees(reduceMotion ? 0 : Self.tiltAngles[index % Self.tiltAngles.count])
+                    )
+                    .zIndex(Double(index))
+            }
+        }
+        .padding(.horizontal, OnboardingLayout.horizontalPadding)
+        .padding(.top, 8)
+    }
+}
+
 struct IntroReflectionView: View {
     let selectedGoals: [RelationshipGoal]
     let action: () -> Void
 
-    private var reflectionText: String {
-        let labels = selectedGoals.map(\.text)
-        let goalText = ListFormatter.localizedString(byJoining: labels)
-        if goalText.isEmpty {
-            return "We hear you. Forever is designed to help you build your ideal relationship reality, together."
-        }
-        return "We hear you. You want \(goalText). Forever is designed to help you build that exact reality, together."
-    }
+    private let reflectionText =
+        "We hear you, many couples want this too. Forever is designed to help you build that exact reality together."
 
     var body: some View {
         VStack(spacing: OnboardingLayout.bodyStackSpacing) {
-            Text(reflectionText)
-                .font(OnboardingLayout.titleFont)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, OnboardingLayout.horizontalPadding)
+            IntroTiltedSelectedGoalsStack(goals: selectedGoals)
 
             Spacer()
+
+            Text(reflectionText)
+                .font(ForeverFont.subheader(.title3))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, OnboardingLayout.horizontalPadding)
 
             IntroPrimaryButton(title: "Continue", action: action)
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
@@ -1125,7 +1156,7 @@ struct IntroFeaturePreviewView: View {
                 icon: "location.fill",
                 title: "Live Distance",
                 description: "See exactly how far apart you are directly on your Lock Screen.",
-                buttonTitle: "Next",
+                buttonTitle: "Continue",
                 usesIntroStyle: true,
                 showsDefaultIcon: false,
                 buttonAction: { withAnimation { tab = 1 } }

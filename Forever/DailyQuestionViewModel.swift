@@ -15,21 +15,21 @@ final class DailyQuestionViewModel {
 
     private var coupleId: UUID?
     private var currentUserId: UUID?
-    nonisolated(unsafe) private var realtimeObserverToken: UUID?
+    private var realtimeObserverToken: UUID?
 
     init(supabase: SupabaseManager = .shared) {
         self.supabase = supabase
     }
 
-    deinit {
-        let token = realtimeObserverToken
-        Task { await supabase.stopObservingCoupleAnswerChanges(token: token) }
+    /// Detaches from the shared couple-answers realtime hub.
+    func stopRealtime() async {
+        await supabase.stopObservingCoupleAnswerChanges(token: realtimeObserverToken)
+        realtimeObserverToken = nil
     }
 
     /// Fetches today's question and answer row, then starts Realtime listening.
     func load(couple: Couple?, currentUserId: UUID?) async {
-        await supabase.stopObservingCoupleAnswerChanges(token: realtimeObserverToken)
-        realtimeObserverToken = nil
+        await stopRealtime()
 
         guard let couple, let currentUserId else {
             question = nil

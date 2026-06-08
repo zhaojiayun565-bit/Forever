@@ -8,7 +8,6 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 type AlertType =
   | "note"
-  | "message"
   | "drawing_started"
   | "question_reveal"
   | "wallpaper"
@@ -156,8 +155,6 @@ async function handleProfilesWebhook(record: ProfileRow, oldRecord: Record<strin
   let event: PushEvent | null = null
   if (record.latest_note_url && record.latest_note_url !== oldRecord.latest_note_url) {
     event = { type: "note", title: "New Drawing", body: `${senderName} sent you a drawing!`, route: "drawingboard" }
-  } else if (record.latest_message && record.latest_message !== oldRecord.latest_message) {
-    event = { type: "message", title: senderName, body: record.latest_message!, route: "drawingboard" }
   } else if (record.drawing_started_at && record.drawing_started_at !== oldRecord.drawing_started_at) {
     event = { type: "drawing_started", title: `${senderName} is drawing`, body: "Tap to join them on the board", route: "drawingboard" }
   } else if (locationChanged(record as unknown as Record<string, unknown>, oldRecord)) {

@@ -143,6 +143,18 @@ final class AppStateManager {
         }
     }
 
+    /// Saves display name and anniversary, refreshes local state, and syncs widgets without a full app reload.
+    func updateProfileDetails(name: String, anniversary: Date) async throws {
+        try await supabase.updateProfileDetails(name: name, anniversary: anniversary)
+        guard let updated = try await supabase.fetchProfile() else { return }
+        currentUser = updated
+        if let partner = partnerProfile {
+            updateWidgetData(partner: partner)
+        } else {
+            syncMyWidgetDefaults()
+        }
+    }
+
     /// Uploads our location to Supabase, refreshes currentUser so its lat/lon is current,
     /// then fetches the partner's profile and reloads widget data.
     func syncAndRefreshWidgets() async {
@@ -427,9 +439,7 @@ final class AppStateManager {
                 didChange = true
             }
         }
-        if let myName = currentUser?.displayName {
-            defaults.set(myName, forKey: "myName")
-        }
+        syncMyNameToWidgetDefaults(defaults: defaults, didChange: &didChange)
         let preferredDistanceUnit = UserDefaults.standard.string(forKey: "distanceUnit") ?? "mi"
         if defaults.string(forKey: "distanceUnit") != preferredDistanceUnit {
             defaults.set(preferredDistanceUnit, forKey: "distanceUnit")
@@ -475,6 +485,38 @@ final class AppStateManager {
 
         if didChange {
             WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+
+    /// Persists the signed-in user's name and anniversary to widget defaults when unpaired.
+    private func syncMyWidgetDefaults() {
+        guard let defaults = UserDefaults(suiteName: "group.com.jiayunzhao.Forever") else { return }
+
+        var didChange = false
+        syncMyNameToWidgetDefaults(defaults: defaults, didChange: &didChange)
+
+        if let date = currentUser?.anniversaryDate {
+            let key = "anniversaryDate"
+            let value = date.timeIntervalSince1970
+            let existing = defaults.object(forKey: key) as? Double
+            if existing != value {
+                defaults.set(value, forKey: key)
+                didChange = true
+            }
+        }
+
+        if didChange {
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+
+    /// Writes the signed-in user's display name to widget defaults when it changes.
+    private func syncMyNameToWidgetDefaults(defaults: UserDefaults, didChange: inout Bool) {
+        if let myName = currentUser?.displayName {
+            if defaults.string(forKey: "myName") != myName {
+                defaults.set(myName, forKey: "myName")
+                didChange = true
+            }
         }
     }
 

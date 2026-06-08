@@ -10,8 +10,9 @@ enum OnboardingStep: Int, CaseIterable {
     case welcome, problem, solution
     case myName, partnerName
     case anniversary, anniversaryInsight, relationshipGoals, reflection
+    case firstMemorySetup, firstMemoryMap, memoryCelebration
     case features
-    case firstMemorySetup, firstMemoryMap, memoryCelebration, reviewAsk
+    case reviewAsk
     case journeySummary, upfrontInvestment, commitment, commitmentEncouragement
     case intent, login, investment, paywall
 
@@ -240,18 +241,10 @@ struct OnboardingView: View {
                         action: advance
                     )
                     .transition(standardStepTransition)
-                case .features:
-                    IntroFeaturePreviewView(
-                        tab: $featureTab,
-                        myName: myName,
-                        partnerName: partnerName,
-                        action: advance
-                    )
-                    .transition(standardStepTransition)
                 case .firstMemorySetup:
                     IntroPromptStepView(
-                        title: "Let's capture your first memory.",
-                        subtitle: "Upload a favorite photo and add a quick note. We'll drop it on the map to start your shared journey.",
+                        title: "Let's start with capturing a memory you want to remember forever.",
+                        subtitle: "Upload a photo from your gallery and add a quick note. We'll drop it on the map to start your shared memory map.",
                         cta: "I'm ready",
                         action: advance
                     )
@@ -269,6 +262,15 @@ struct OnboardingView: View {
                         image: localOnboardingMemory?.image,
                         note: localOnboardingMemory?.note,
                         coordinate: localOnboardingMemory?.coordinate,
+                        action: advance
+                    )
+                    .transition(standardStepTransition)
+                case .features:
+                    IntroFeaturePreviewView(
+                        tab: $featureTab,
+                        myName: myName,
+                        partnerName: partnerName,
+                        anniversary: Date(timeIntervalSince1970: anniversary),
                         action: advance
                     )
                     .transition(standardStepTransition)
@@ -923,12 +925,12 @@ struct IntroMemoryCelebrationView: View {
                 .opacity(cardVisible ? 1 : 0)
                 .padding(.bottom, 8)
 
-            Text("First memory secured!")
+            Text("Your memory map has officially started!")
                 .font(OnboardingLayout.titleFont)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
 
-            Text("Your map is officially started. Your partner is going to love this.")
+            Text("Your partner is going to love creating more memories together on this shared map.")
                 .font(ForeverFont.subheader(.title3))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -983,7 +985,7 @@ struct IntroReviewAskView: View {
 
     var body: some View {
         VStack(spacing: OnboardingLayout.bodyStackSpacing) {
-            Text("Having fun so far?")
+            Text("Let's help other couples find Forever?")
                 .font(OnboardingLayout.titleFont)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
@@ -996,25 +998,25 @@ struct IntroReviewAskView: View {
 
             Spacer()
 
-            IntroPrimaryButton(title: "I'm ready", action: action)
+            IntroPrimaryButton(title: "Of course") {
+                requestReview()
+                action()
+            }
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
-        }
-        .onAppear {
-            requestReview()
         }
     }
 }
 
-/// Displays selected relationship goals as a slightly tilted, overlapping stack.
+/// Displays selected relationship goals as a slightly tilted stack.
 private struct IntroTiltedSelectedGoalsStack: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let goals: [RelationshipGoal]
 
     private static let tiltAngles: [Double] = [-2.5, 2, -1.5, 2.5, -2, 1.5]
-    private let cardOverlap: CGFloat = 10
+    private let tiltedCardSpacing: CGFloat = 20
 
     var body: some View {
-        VStack(spacing: -cardOverlap) {
+        VStack(spacing: tiltedCardSpacing) {
             ForEach(Array(goals.enumerated()), id: \.element.id) { index, goal in
                 IntroSelectableOptionRow(title: goal.text, isSelected: true)
                     .rotationEffect(
@@ -1024,7 +1026,7 @@ private struct IntroTiltedSelectedGoalsStack: View {
             }
         }
         .padding(.horizontal, OnboardingLayout.horizontalPadding)
-        .padding(.top, 8)
+        .padding(.vertical, 8)
     }
 }
 
@@ -1032,20 +1034,24 @@ struct IntroReflectionView: View {
     let selectedGoals: [RelationshipGoal]
     let action: () -> Void
 
-    private let reflectionText =
-        "We hear you, many couples want this too. Forever is designed to help you build that exact reality together."
-
     var body: some View {
         VStack(spacing: OnboardingLayout.bodyStackSpacing) {
             IntroTiltedSelectedGoalsStack(goals: selectedGoals)
 
             Spacer()
 
-            Text(reflectionText)
-                .font(ForeverFont.subheader(.title3))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, OnboardingLayout.horizontalPadding)
+            VStack(spacing: 12) {
+                Text("We hear you, many couples want this too.")
+                    .font(OnboardingLayout.titleFont)
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+
+                Text("Forever is designed to help you build that exact reality together.")
+                    .font(ForeverFont.subheader(.title3))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, OnboardingLayout.horizontalPadding)
 
             IntroPrimaryButton(title: "Continue", action: action)
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
@@ -1140,18 +1146,38 @@ struct IntentSelectionView: View {
     }
 }
 
-/// Intro-phase preview of Live Distance and Handwritten Notes (no permission prompts).
+/// Intro-phase widget carousel (no permission prompts).
 struct IntroFeaturePreviewView: View {
     @Binding var tab: Int
     let myName: String
     let partnerName: String
+    let anniversary: Date
     let action: () -> Void
 
     private var myInitial: String { ForeverMonogramBubble.initial(from: myName) }
     private var partnerInitial: String { ForeverMonogramBubble.initial(from: partnerName) }
 
+    private var displayPartnerName: String {
+        let trimmed = partnerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "your partner" }
+        return trimmed.prefix(1).uppercased() + trimmed.dropFirst()
+    }
+
     var body: some View {
         TabView(selection: $tab) {
+            FeaturePage(
+                icon: "heart.fill",
+                title: "Give \(displayPartnerName) a reason to smile every time they unlock their phone.",
+                description: "Forever's premium widgets are designed to cut through the daily noise and keep you deeply connected.",
+                buttonTitle: "Continue",
+                usesIntroStyle: true,
+                showsDefaultIcon: false,
+                buttonAction: { withAnimation { tab = 1 } }
+            ) {
+                EmptyView()
+            }
+            .tag(0)
+
             FeaturePage(
                 icon: "location.fill",
                 title: "Live Distance",
@@ -1159,14 +1185,14 @@ struct IntroFeaturePreviewView: View {
                 buttonTitle: "Continue",
                 usesIntroStyle: true,
                 showsDefaultIcon: false,
-                buttonAction: { withAnimation { tab = 1 } }
+                buttonAction: { withAnimation { tab = 2 } }
             ) {
                 LiveDistanceWidgetPreviewCard(
                     myInitial: myInitial,
                     partnerInitial: partnerInitial
                 )
             }
-            .tag(0)
+            .tag(1)
 
             FeaturePage(
                 icon: "applepencil",
@@ -1174,9 +1200,42 @@ struct IntroFeaturePreviewView: View {
                 description: "Draw notes that instantly appear on your partner's home screen.",
                 buttonTitle: "Continue",
                 usesIntroStyle: true,
+                showsDefaultIcon: false,
+                buttonAction: { withAnimation { tab = 3 } }
+            ) {
+                HandwrittenNotesWidgetPreviewCard()
+            }
+            .tag(2)
+
+            FeaturePage(
+                icon: "heart.text.square.fill",
+                title: "Love Messages",
+                description: "Send each other short love messages directly to each other's lockscreen.",
+                buttonTitle: "Continue",
+                usesIntroStyle: true,
+                showsDefaultIcon: false,
+                buttonAction: { withAnimation { tab = 4 } }
+            ) {
+                LoveMessagesWidgetPreviewCard()
+            }
+            .tag(3)
+
+            FeaturePage(
+                icon: "heart.fill",
+                title: "Days Together",
+                description: "Feel closer everyday as this number goes up.",
+                buttonTitle: "Continue",
+                usesIntroStyle: true,
+                showsDefaultIcon: false,
                 buttonAction: action
-            )
-            .tag(1)
+            ) {
+                DaysTogetherWidgetPreviewCard(
+                    myName: myName,
+                    partnerName: partnerName,
+                    anniversary: anniversary
+                )
+            }
+            .tag(4)
         }
         .tabViewStyle(.page(indexDisplayMode: .always))
         .indexViewStyle(.page(backgroundDisplayMode: .always))
@@ -1186,7 +1245,7 @@ struct IntroFeaturePreviewView: View {
 struct FeaturePage<Illustration: View>: View {
     let icon: String
     let title: String
-    let description: String
+    let description: String?
     let buttonTitle: String
     var usesIntroStyle: Bool = false
     var showsDefaultIcon: Bool = true
@@ -1196,7 +1255,7 @@ struct FeaturePage<Illustration: View>: View {
     init(
         icon: String,
         title: String,
-        description: String,
+        description: String? = nil,
         buttonTitle: String,
         usesIntroStyle: Bool = false,
         showsDefaultIcon: Bool = true,
@@ -1224,11 +1283,13 @@ struct FeaturePage<Illustration: View>: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, usesIntroStyle ? OnboardingLayout.horizontalPadding : 0)
 
-            Text(description)
-                .font(ForeverFont.subheader(.title3))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, OnboardingLayout.horizontalPadding)
+            if let description, !description.isEmpty {
+                Text(description)
+                    .font(ForeverFont.subheader(.title3))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, OnboardingLayout.horizontalPadding)
+            }
 
             Spacer()
 
@@ -1279,7 +1340,7 @@ extension FeaturePage where Illustration == EmptyView {
     init(
         icon: String,
         title: String,
-        description: String,
+        description: String? = nil,
         buttonTitle: String,
         usesIntroStyle: Bool = false,
         buttonAction: @escaping () -> Void

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UserNotifications
 
 enum AppTab: Hashable {
@@ -83,7 +84,13 @@ struct ContentView: View {
 
                 DiscoverQuestionsView()
                     .tag(AppTab.questions)
-                    .tabItem { Label("Questions", systemImage: "sparkles") }
+                    .tabItem {
+                        Label {
+                            Text("Topics")
+                        } icon: {
+                            Image(uiImage: tabBarIcon(named: "bubble.left.and.bubble.right.fill", pointSize: 18, scale: .medium))
+                        }
+                    }
 
                 SettingsView()
                     .tag(AppTab.me)
@@ -97,4 +104,12 @@ struct ContentView: View {
     private func registerForPushIfAuthorized() async {
         await NotificationAuthorizationManager.registerForRemoteIfEligible()
     }
+}
+
+/// Renders a tab bar SF Symbol at a smaller point size for optical balance with compact icons.
+private func tabBarIcon(named name: String, pointSize: CGFloat, scale: UIImage.SymbolScale = .medium) -> UIImage {
+    UIImage(
+        systemName: name,
+        withConfiguration: UIImage.SymbolConfiguration(pointSize: pointSize, weight: .medium, scale: scale)
+    ) ?? UIImage()
 }

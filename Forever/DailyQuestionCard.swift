@@ -20,7 +20,7 @@ struct DailyQuestionCard: View {
             headerRow
 
             Text(questionText)
-                .font(ForeverFont.header(.title3))
+                .font(ForeverFont.header(.headline))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -39,7 +39,7 @@ struct DailyQuestionCard: View {
 
     private var headerRow: some View {
         HStack {
-            Label("Daily Question", systemImage: "sparkles")
+            Label("Daily Topic", systemImage: "bubble.left.and.bubble.right.fill")
                 .font(ForeverFont.subheader(.subheadline))
                 .foregroundStyle(QuestionsTheme.accent)
 

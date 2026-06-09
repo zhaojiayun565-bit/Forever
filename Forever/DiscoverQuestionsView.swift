@@ -30,7 +30,7 @@ struct DiscoverQuestionsView: View {
                 }
             }
             .background(Color(UIColor.systemGroupedBackground))
-            .navigationTitle("Questions")
+            .navigationTitle("Topics")
             .navigationBarTitleDisplayMode(.large)
             .task(id: state.currentCouple?.id) {
                 await viewModel.load(

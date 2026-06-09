@@ -419,7 +419,7 @@
 				INFOPLIST_FILE = Forever/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Your camera is used to take a profile photo shown on your distance widget.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location is used to show your partner how far away you are in real-time on your Home Screen widget, helping you both stay connected";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Your photo library is used to choose a profile photo shown on your distance widget.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need photo library access to let you select photos and automatically pin where your memories happened.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -456,7 +456,7 @@
 				INFOPLIST_FILE = Forever/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Your camera is used to take a profile photo shown on your distance widget.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location is used to show your partner how far away you are in real-time on your Home Screen widget, helping you both stay connected";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Your photo library is used to choose a profile photo shown on your distance widget.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need photo library access to let you select photos and automatically pin where your memories happened.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

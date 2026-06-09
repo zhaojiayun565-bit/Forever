@@ -6,6 +6,7 @@ import UIKit
 struct LocationPickerView: View {
     @Binding var selectedCoordinate: CLLocationCoordinate2D?
     @Binding var locationName: String?
+    var onManualConfirm: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchService = LocationSearchService()
@@ -108,6 +109,7 @@ struct LocationPickerView: View {
             locationName = searchService.searchQuery.isEmpty ? "Selected Location" : searchService.searchQuery
         }
 
+        onManualConfirm?()
         dismiss()
     }
 }

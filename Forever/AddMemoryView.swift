@@ -20,6 +20,9 @@ struct AddMemoryView: View {
 
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var didManuallyPickLocation = false
+    @State private var didManuallyPickDate = false
+    @State private var showPhotoPicker = false
 
     var body: some View {
         NavigationStack {
@@ -27,7 +30,12 @@ struct AddMemoryView: View {
                 Section {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
-                            PhotosPicker(selection: $selectedItems, maxSelectionCount: 10, matching: .images) {
+                            Button {
+                                Task {
+                                    await PhotoLibraryAuthorizationManager.requestIfNeeded()
+                                    showPhotoPicker = true
+                                }
+                            } label: {
                                 VStack {
                                     Image(systemName: "plus")
                                         .font(.system(size: 24, weight: .bold))
@@ -37,8 +45,18 @@ struct AddMemoryView: View {
                                 .background(Color.pink.opacity(0.1))
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
+                            .photosPicker(
+                                isPresented: $showPhotoPicker,
+                                selection: $selectedItems,
+                                maxSelectionCount: 10,
+                                matching: .images,
+                                photoLibrary: .shared()
+                            )
                             .onChange(of: selectedItems) { _, items in
-                                Task { await loadImages(from: items) }
+                                Task {
+                                    await loadImages(from: items)
+                                    await applyPhotoMetadata(from: items)
+                                }
                             }
 
                             ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, img in
@@ -68,7 +86,11 @@ struct AddMemoryView: View {
                     }
 
                     NavigationLink {
-                        LocationPickerView(selectedCoordinate: $coordinate, locationName: $locationName)
+                        LocationPickerView(
+                            selectedCoordinate: $coordinate,
+                            locationName: $locationName,
+                            onManualConfirm: { didManuallyPickLocation = true }
+                        )
                     } label: {
                         HStack {
                             Text("Location")
@@ -135,7 +157,10 @@ struct AddMemoryView: View {
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") { showingCalendarSheet = false }
+                                Button("Done") {
+                                    didManuallyPickDate = true
+                                    showingCalendarSheet = false
+                                }
                             }
                         }
                 }
@@ -159,6 +184,22 @@ struct AddMemoryView: View {
             }
         }
         selectedImages = loaded
+    }
+
+    /// Applies GPS and capture date from the first selected photo with PHAsset metadata.
+    private func applyPhotoMetadata(from items: [PhotosPickerItem]) async {
+        let metadata = PhotoLibraryMetadataReader.metadata(
+            forItemIdentifiers: items.compactMap(\.itemIdentifier)
+        )
+
+        if !didManuallyPickLocation, let coordinate = metadata.coordinate {
+            self.coordinate = coordinate
+            locationName = await GeocodingHelper.placeName(for: coordinate)
+        }
+
+        if !didManuallyPickDate, let creationDate = metadata.creationDate {
+            date = Calendar.current.startOfDay(for: creationDate)
+        }
     }
 
     private func saveMemory() async {

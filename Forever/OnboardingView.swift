@@ -244,7 +244,7 @@ struct OnboardingView: View {
                 case .firstMemorySetup:
                     IntroPromptStepView(
                         title: "Let's start with capturing a memory you want to remember forever.",
-                        subtitle: "Upload a photo from your gallery and add a quick note. We'll drop it on the map to start your shared memory map.",
+                        subtitle: "Upload a photo from your gallery and add a quick note to start your shared memory map.",
                         cta: "I'm ready",
                         action: advance
                     )
@@ -842,7 +842,6 @@ struct IntroOnboardingMapStep: View {
             .environment(state)
         }
         .task {
-            AmbientDataManager.shared.requestLocationAuthorizationFirst()
             let center = await AmbientDataManager.shared.mapCenterCoordinate()
             mapCenterCoordinate = center
             mapPosition = .region(
@@ -1019,14 +1018,18 @@ private struct IntroTiltedSelectedGoalsStack: View {
         VStack(spacing: tiltedCardSpacing) {
             ForEach(Array(goals.enumerated()), id: \.element.id) { index, goal in
                 IntroSelectableOptionRow(title: goal.text, isSelected: true)
-                    .rotationEffect(
-                        .degrees(reduceMotion ? 0 : Self.tiltAngles[index % Self.tiltAngles.count])
-                    )
+                    .rotationEffect(.degrees(tiltAngle(for: index)))
                     .zIndex(Double(index))
             }
         }
         .padding(.horizontal, OnboardingLayout.horizontalPadding)
         .padding(.vertical, 8)
+    }
+
+    /// Single selection stays straight; multiple cards get alternating tilt.
+    private func tiltAngle(for index: Int) -> Double {
+        guard goals.count > 1, !reduceMotion else { return 0 }
+        return Self.tiltAngles[index % Self.tiltAngles.count]
     }
 }
 

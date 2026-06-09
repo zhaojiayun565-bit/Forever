@@ -122,14 +122,14 @@ struct CherishedTextsView: View {
 
     private var emptyState: some View {
         ContentUnavailableView {
-            Label("No Cherished Texts", systemImage: "heart.text.square")
+            Label("Save your favorite words", systemImage: "heart.text.square")
         } description: {
-            Text("Tap + to import a screenshot.")
+            Text("Keep the messages, sweet texts, and inside jokes that make you smile all in one shared space.")
         } actions: {
             Button {
                 showImportDialog = true
             } label: {
-                Text("Import Screenshot")
+                Text("Add your first screenshot")
             }
             .buttonStyle(.borderedProminent)
             .tint(.pink)

@@ -14,7 +14,7 @@ struct CategoryQuestionsView: View {
     }
 
     private var partnerName: String {
-        state.partnerProfile?.displayName ?? String(localized: "Partner")
+        state.partnerDisplayName
     }
 
     var body: some View {

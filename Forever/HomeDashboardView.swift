@@ -1,9 +1,7 @@
 import SwiftUI
-import CoreLocation
 
 struct HomeDashboardView: View {
     @Environment(AppStateManager.self) private var state
-    @AppStorage("distanceUnit") private var distanceUnit = "mi"
     @State private var lockScreenMessage = ""
     @State private var showingDrawingBoard = false
     @State private var showingPairingRequiredAlert = false
@@ -12,37 +10,9 @@ struct HomeDashboardView: View {
     @State private var showDailyAnswerSheet = false
 
     private var partnerName: String {
-        state.partnerProfile?.displayName ?? String(localized: "Partner")
+        state.partnerDisplayName
     }
 
-    private var distanceInMiles: Double? {
-        guard
-            let myLat = state.currentUser?.latitude,
-            let myLon = state.currentUser?.longitude,
-            let partnerLat = state.partnerProfile?.latitude,
-            let partnerLon = state.partnerProfile?.longitude
-        else {
-            return nil
-        }
-        let myLocation = CLLocation(latitude: myLat, longitude: myLon)
-        let partnerLocation = CLLocation(latitude: partnerLat, longitude: partnerLon)
-        return myLocation.distance(from: partnerLocation) / 1609.344
-    }
-
-    private var isKilometers: Bool {
-        distanceUnit == "km"
-    }
-
-    private var displayDistanceValue: String {
-        guard let miles = distanceInMiles, miles > 0 else { return "--" }
-        let value = isKilometers ? miles * 1.609344 : miles
-        return String(format: "%.0f", value)
-    }
-
-    private var displayDistanceUnit: String {
-        isKilometers ? "km away" : "miles away"
-    }
-    
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -67,6 +37,37 @@ struct HomeDashboardView: View {
                     if state.currentCouple == nil {
                         PairingCardView {
                             showPairingSheet = true
+                        }
+                    }
+
+                    BubblyCard {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Label("Lock Screen Message", systemImage: "lock.iphone")
+                                .font(ForeverFont.header(.headline))
+
+                            HStack {
+                                TextField("Thinking of you...", text: $lockScreenMessage)
+                                    .font(ForeverFont.body(.body))
+                                    .padding(14)
+                                    .background(Color(UIColor.tertiarySystemGroupedBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                                Button {
+                                    Task {
+                                        try? await SupabaseManager.shared.sendLockScreenMessage(lockScreenMessage)
+                                        lockScreenMessage = ""
+                                    }
+                                } label: {
+                                    Image(systemName: "paperplane.fill")
+                                        .font(.title3)
+                                        .foregroundStyle(.white)
+                                        .padding(14)
+                                        .background(lockScreenMessage.isEmpty ? Color.gray.opacity(0.3) : Color.pink)
+                                        .clipShape(Circle())
+                                }
+                                .disabled(lockScreenMessage.isEmpty)
+                                .animation(.spring(), value: lockScreenMessage.isEmpty)
+                            }
                         }
                     }
 
@@ -135,59 +136,6 @@ struct HomeDashboardView: View {
                         .shadow(color: .black.opacity(0.04), radius: 12, x: 0, y: 6)
                     }
                     .buttonStyle(.plain)
-
-                    // 3. THE MAP STATS CARD
-                    BubblyCard {
-                        VStack(spacing: 8) {
-                            Text("Distance Apart")
-                                .font(ForeverFont.subheader(.subheadline))
-                                .foregroundStyle(.secondary)
-
-                            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Text(displayDistanceValue)
-                                    .font(ForeverFont.header(size: 52, relativeTo: .largeTitle))
-                                    .foregroundStyle(
-                                        LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                    )
-                                Text(displayDistanceUnit)
-                                    .font(ForeverFont.bold(.title3))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    
-                    // ACTION: Lock Screen Message
-                    BubblyCard {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Label("Lock Screen Message", systemImage: "lock.iphone")
-                                .font(ForeverFont.header(.headline))
-                            
-                            HStack {
-                                TextField("Thinking of you...", text: $lockScreenMessage)
-                                    .font(ForeverFont.body(.body))
-                                    .padding(14)
-                                    .background(Color(UIColor.tertiarySystemGroupedBackground))
-                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                
-                                Button {
-                                    Task {
-                                        try? await SupabaseManager.shared.sendLockScreenMessage(lockScreenMessage)
-                                        lockScreenMessage = ""
-                                    }
-                                } label: {
-                                    Image(systemName: "paperplane.fill")
-                                        .font(.title3)
-                                        .foregroundStyle(.white)
-                                        .padding(14)
-                                        .background(lockScreenMessage.isEmpty ? Color.gray.opacity(0.3) : Color.pink)
-                                        .clipShape(Circle())
-                                }
-                                .disabled(lockScreenMessage.isEmpty)
-                                .animation(.spring(), value: lockScreenMessage.isEmpty)
-                            }
-                        }
-                    }
                 }
                 .padding(20)
             }
@@ -246,45 +194,39 @@ struct DaysTogetherHeroCard: View {
     }
     
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             HStack(spacing: 20) {
                 AvatarView(
                     url: state.currentUser?.avatarUrl.flatMap { URL(string: $0) },
                     name: state.currentUser?.displayName ?? "Me",
                     localImage: state.myAvatarImage,
-                    size: 72,
-                    style: .glassDark
+                    size: 60,
+                    style: .glassLight
                 )
                 AvatarView(
                     url: state.partnerProfile?.avatarUrl.flatMap { URL(string: $0) },
-                    name: state.partnerProfile?.displayName ?? "Partner",
-                    size: 72,
-                    style: .glassDark
+                    name: state.partnerDisplayName,
+                    size: 60,
+                    style: .glassLight
                 )
             }
             .overlay {
                 Image(systemName: "heart.fill")
-                    .font(.system(size: 20))
+                    .font(.system(size: 16))
                     .foregroundStyle(.pink)
-                    .padding(6)
-                    .background(Color.black)
-                    .clipShape(Circle())
             }
-            
+
             VStack(spacing: -2) {
                 Text("\(daysTogether)")
-                    .font(ForeverFont.header(size: 64, relativeTo: .largeTitle))
-                    .foregroundStyle(.white)
-                
-                Text("DAYS")
-                    .font(ForeverFont.bold(.subheadline))
-                    .foregroundStyle(.gray)
-                    .tracking(2)
+                    .font(ForeverFont.header(size: 44, relativeTo: .largeTitle))
+                    .foregroundStyle(.primary)
+
+                Text("Days Together")
+                    .font(ForeverFont.subheader(.subheadline))
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 32)
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity)
-        .background(Color.black)
-        .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
     }
 }

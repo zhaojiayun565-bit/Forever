@@ -55,7 +55,7 @@ struct LockscreenDrawingBoardView: View {
             let manager = DrawingBoardManager(
                 coupleId: appState.currentCouple?.id,
                 currentUserId: appState.currentUser?.id ?? UUID(),
-                partnerName: appState.partnerProfile?.displayName ?? String(localized: "Your partner")
+                partnerName: appState.partnerDisplayName
             )
             board = manager
             await manager.start()

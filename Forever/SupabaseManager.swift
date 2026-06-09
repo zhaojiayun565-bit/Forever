@@ -469,15 +469,40 @@ final class SupabaseManager: Sendable {
         return urlString
     }
 
-    /// Updates display name and anniversary date for the signed-in user.
-    func updateProfileDetails(name: String, anniversary: Date) async throws {
+    /// Deletes the signed-in user's profile photo from storage and clears `avatar_url`.
+    func removeProfileAvatar() async throws {
+        let session = try await client.auth.session
+        let path = "avatars/\(session.user.id.uuidString).jpg"
+
+        try? await client.storage
+            .from(DB.notesBucket)
+            .remove(paths: [path])
+
+        struct AvatarClear: Encodable, Sendable {
+            let avatar_url: String?
+        }
+        try await client.from(DB.profiles)
+            .update(AvatarClear(avatar_url: nil))
+            .eq("id", value: session.user.id)
+            .execute()
+    }
+
+    /// Updates display name, partner nickname, and anniversary date for the signed-in user.
+    func updateProfileDetails(name: String, partnerNickname: String?, anniversary: Date) async throws {
         let session = try await client.auth.session
         struct UpdateDTO: Encodable, Sendable {
             let display_name: String
+            let partner_nickname: String?
             let anniversary_date: Date
         }
+        let trimmedNickname = partnerNickname?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nicknameToSave = (trimmedNickname?.isEmpty == false) ? trimmedNickname : nil
         try await client.from(DB.profiles)
-            .update(UpdateDTO(display_name: name, anniversary_date: anniversary))
+            .update(UpdateDTO(
+                display_name: name,
+                partner_nickname: nicknameToSave,
+                anniversary_date: anniversary
+            ))
             .eq("id", value: session.user.id)
             .execute()
     }

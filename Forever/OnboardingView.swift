@@ -25,8 +25,27 @@ enum OnboardingStep: Int, CaseIterable {
 }
 
 enum OnboardingIntroTheme {
-    static let background = Color(red: 250.0 / 255.0, green: 250.0 / 255.0, blue: 250.0 / 255.0)
     static let accent = Color(red: 1.0, green: 45.0 / 255.0, blue: 85.0 / 255.0)
+
+    private static let lightBackground = Color(
+        red: 250.0 / 255.0,
+        green: 250.0 / 255.0,
+        blue: 250.0 / 255.0
+    )
+
+    static func background(for scheme: ColorScheme) -> Color {
+        scheme == .dark ? .black : lightBackground
+    }
+
+    static func elevatedSurface(for scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(UIColor.secondarySystemBackground)
+            : Color.white.opacity(0.95)
+    }
+
+    static func subtleBorder(for scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.08)
+    }
 }
 
 /// AppStorage keys shared between onboarding and pairing flows.
@@ -84,6 +103,7 @@ enum RelationshipGoal: String, CaseIterable, Identifiable {
 
 struct OnboardingView: View {
     @Environment(AppStateManager.self) private var state
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("tempMyName") private var myName = ""
     @AppStorage("tempPartnerName") private var partnerName = ""
@@ -156,20 +176,8 @@ struct OnboardingView: View {
 
     private var onboardingStepStack: some View {
         ZStack {
-            if isIntroPhase {
-                OnboardingIntroTheme.background
-                    .ignoresSafeArea()
-            } else {
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.07, green: 0.04, blue: 0.14).opacity(0.08),
-                        Color(UIColor.systemBackground)
-                    ],
-                    startPoint: .top,
-                    endPoint: .center
-                )
+            OnboardingIntroTheme.background(for: colorScheme)
                 .ignoresSafeArea()
-            }
 
             VStack {
                 if showsOnboardingProgress {
@@ -446,8 +454,14 @@ struct OnboardingView: View {
         Task {
             let anniversaryDate = Date(timeIntervalSince1970: anniversary)
             let nameToSave = myName.isEmpty ? (state.currentUser?.displayName ?? "") : myName
+            let trimmedPartnerName = partnerName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let partnerNicknameToSave = trimmedPartnerName.isEmpty ? nil : trimmedPartnerName
 
-            try? await SupabaseManager.shared.updateProfileDetails(name: nameToSave, anniversary: anniversaryDate)
+            try? await state.updateProfileDetails(
+                name: nameToSave,
+                partnerNickname: partnerNicknameToSave,
+                anniversary: anniversaryDate
+            )
 
             await state.initializeApp()
             await syncOnboardingMemoryAfterAuth()
@@ -612,6 +626,7 @@ struct IntroNameInputView: View {
     @Binding var name: String
     let action: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -625,11 +640,11 @@ struct IntroNameInputView: View {
                 .font(ForeverFont.body(.title2))
                 .multilineTextAlignment(.center)
                 .padding()
-                .background(Color.white.opacity(0.95))
+                .background(OnboardingIntroTheme.elevatedSurface(for: colorScheme))
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                        .stroke(OnboardingIntroTheme.subtleBorder(for: colorScheme), lineWidth: 1)
                 )
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
                 .focused($isFocused)
@@ -655,6 +670,8 @@ struct IntroAnniversaryPickerView: View {
     @Binding var anniversary: Date
     let action: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         VStack(spacing: OnboardingLayout.bodyStackSpacing) {
             Text("When is your anniversary?")
@@ -666,7 +683,7 @@ struct IntroAnniversaryPickerView: View {
                 .datePickerStyle(.graphical)
                 .tint(OnboardingIntroTheme.accent)
                 .padding()
-                .background(Color.white.opacity(0.9))
+                .background(OnboardingIntroTheme.elevatedSurface(for: colorScheme))
                 .cornerRadius(24)
                 .padding(.horizontal, 20)
 
@@ -787,6 +804,7 @@ struct IntroRelationshipGoalsView: View {
 
 struct IntroOnboardingMapStep: View {
     @Environment(AppStateManager.self) private var state
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var showAddMemory: Bool
     @Binding var localMemory: (image: UIImage, note: String, coordinate: CLLocationCoordinate2D)?
     let onMemoryStaged: (UIImage, String, CLLocationCoordinate2D) -> Void
@@ -807,7 +825,7 @@ struct IntroOnboardingMapStep: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                .stroke(OnboardingIntroTheme.subtleBorder(for: colorScheme), lineWidth: 1)
         }
     }
 
@@ -908,6 +926,7 @@ private struct IntroMemoryMapPreviewCard: View {
 
 struct IntroMemoryCelebrationView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     var image: UIImage?
     var note: String?
     var coordinate: CLLocationCoordinate2D?
@@ -972,7 +991,7 @@ struct IntroMemoryCelebrationView: View {
             }
         }
         .padding(8)
-        .background(Color.white)
+        .background(OnboardingIntroTheme.elevatedSurface(for: colorScheme))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 6)
     }
@@ -1361,15 +1380,14 @@ extension FeaturePage where Illustration == EmptyView {
     }
 }
 
-/// Onboarding paywall: custom 3-step flow with skip path for free tier.
+/// Onboarding paywall: custom 3-step hard paywall flow.
 struct OnboardingPaywallStep: View {
     @Environment(SubscriptionManager.self) private var subscription
     let onContinue: () -> Void
 
     var body: some View {
         ForeverCustomPaywallFlow(
-            onCompleted: onContinue,
-            onSkip: onContinue
+            onCompleted: onContinue
         )
         .onChange(of: subscription.isPro) { _, isPro in
             if isPro { onContinue() }

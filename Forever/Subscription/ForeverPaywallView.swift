@@ -10,8 +10,7 @@ struct ForeverPaywallView: View {
 
     var body: some View {
         ForeverCustomPaywallFlow(
-            onCompleted: { onCompleted?() },
-            onSkip: onDismiss
+            onCompleted: { onCompleted?() }
         )
     }
 }

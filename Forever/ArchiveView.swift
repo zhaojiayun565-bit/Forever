@@ -127,7 +127,7 @@ struct ArchiveView: View {
         if drawing.authorId == state.currentUser?.id {
             return String(localized: "You")
         }
-        return state.partnerProfile?.displayName ?? String(localized: "Partner")
+        return state.partnerDisplayName
     }
 }
 

@@ -20,12 +20,12 @@ private enum DistanceUnitOption: String, CaseIterable {
 
 struct SettingsView: View {
     @Environment(AppStateManager.self) private var state
-    @Environment(SubscriptionManager.self) private var subscription
     @Environment(\.openURL) private var openURL
     @Environment(\.requestReview) private var requestReview
     private var ambientData = AmbientDataManager.shared
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @State private var displayName = ""
+    @State private var partnerNickname = ""
     @State private var anniversary = Date()
     @State private var isSaving = false
     @State private var isShowingUnpairAlert = false
@@ -36,8 +36,7 @@ struct SettingsView: View {
     @State private var showPhotoLibrary = false
     @State private var isUploadingAvatar = false
     @State private var avatarError: String?
-    @State private var showPaywall = false
-    @State private var subscriptionAlert: String?
+    @State private var showCustomerCenter = false
     @State private var unavailableActionAlert: String?
     @State private var notificationStatusLabel = "Not Set"
     @State private var saveDetailsError: String?
@@ -45,6 +44,10 @@ struct SettingsView: View {
 
     private var normalizedDistanceUnit: String {
         DistanceUnitOption(rawValue: distanceUnit)?.rawValue ?? DistanceUnitOption.miles.rawValue
+    }
+
+    private var hasProfilePhoto: Bool {
+        state.myAvatarImage != nil || state.currentUser?.avatarUrl != nil
     }
 
     private func syncDistanceUnitToWidgetDefaults() {
@@ -114,7 +117,18 @@ struct SettingsView: View {
                         .onSubmit {
                             saveCoupleDetailsIfNeeded()
                         }
+                    TextField("Partner's Display Name", text: $partnerNickname)
+                        .textContentType(.name)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .submitLabel(.done)
+                        .onSubmit {
+                            saveCoupleDetailsIfNeeded()
+                        }
                     DatePicker("Anniversary", selection: $anniversary, displayedComponents: .date)
+                        .onChange(of: anniversary) { _, _ in
+                            saveCoupleDetailsIfNeeded()
+                        }
 
                     if isSaving {
                         HStack {
@@ -130,37 +144,6 @@ struct SettingsView: View {
                     Text("Couple Details")
                 }
 
-                Section("Forever Pro") {
-                    if subscription.isPro {
-                        Label("Forever: App for Couples Pro", systemImage: "checkmark.seal.fill")
-                            .foregroundStyle(.pink)
-                        if let expiration = subscription.activeProExpirationDate {
-                            Text("Renews \(expiration.formatted(date: .abbreviated, time: .omitted))")
-                                .font(ForeverFont.caption())
-                                .foregroundStyle(.secondary)
-                        }
-                    } else {
-                        Text("Unlock unlimited memories, widgets, and more.")
-                            .font(ForeverFont.subheader(.subheadline))
-                            .foregroundStyle(.secondary)
-                        Button("Upgrade to Pro") {
-                            showPaywall = true
-                        }
-                        .font(ForeverFont.cta(.subheadline))
-                    }
-
-                    Button("Restore Purchases") {
-                        Task {
-                            do {
-                                _ = try await subscription.restorePurchases()
-                            } catch {
-                                subscriptionAlert = error.localizedDescription
-                            }
-                        }
-                    }
-                    .disabled(subscription.isLoading)
-                }
-
                 Section("Preferences") {
                     Picker("Distance Unit", selection: $distanceUnit) {
                         ForEach(DistanceUnitOption.allCases, id: \.rawValue) { option in
@@ -168,8 +151,6 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    .foregroundStyle(.white)
-                    .tint(.white)
                 }
 
                 Section("Permissions") {
@@ -181,8 +162,7 @@ struct SettingsView: View {
                     } label: {
                         settingsActionRow(
                             title: "Notifications",
-                            status: notificationStatusLabel,
-                            titleColor: .white
+                            status: notificationStatusLabel
                         )
                     }
                     .buttonStyle(.plain)
@@ -192,8 +172,7 @@ struct SettingsView: View {
                     } label: {
                         settingsActionRow(
                             title: "Location Permission",
-                            status: ambientData.locationPermissionStatusLabel,
-                            titleColor: .white
+                            status: ambientData.locationPermissionStatusLabel
                         )
                     }
                     .buttonStyle(.plain)
@@ -209,7 +188,7 @@ struct SettingsView: View {
 
                 Section("App") {
                     settingsLinkRow(title: "Manage Subscription") {
-                        openURL(AppSupportConfiguration.manageSubscriptionsURL)
+                        showCustomerCenter = true
                     }
 
                     settingsLinkRow(title: "Rate the App") {
@@ -310,6 +289,10 @@ struct SettingsView: View {
                 guard !hasUnsavedCoupleDetails else { return }
                 syncCoupleDetailsFromProfile()
             }
+            .onChange(of: state.currentUser?.partnerNickname) { _, _ in
+                guard !hasUnsavedCoupleDetails else { return }
+                syncCoupleDetailsFromProfile()
+            }
             .onChange(of: distanceUnit) { _, _ in
                 if distanceUnit != normalizedDistanceUnit {
                     distanceUnit = normalizedDistanceUnit
@@ -319,6 +302,11 @@ struct SettingsView: View {
             .confirmationDialog("Profile Photo", isPresented: $showPhotoOptions, titleVisibility: .visible) {
                 Button("Take Photo") { showCamera = true }
                 Button("Choose from Library") { showPhotoLibrary = true }
+                if hasProfilePhoto {
+                    Button("Remove Photo", role: .destructive) {
+                        Task { await removeAvatar() }
+                    }
+                }
                 Button("Cancel", role: .cancel) {}
             }
             .sheet(isPresented: $showCamera) {
@@ -335,15 +323,7 @@ struct SettingsView: View {
                 PairingView(usesInviteEntryLayout: false)
                     .environment(state)
             }
-            .foreverPaywall(isPresented: $showPaywall)
-            .alert("Subscription", isPresented: Binding(
-                get: { subscriptionAlert != nil },
-                set: { if !$0 { subscriptionAlert = nil } }
-            )) {
-                Button("OK", role: .cancel) { subscriptionAlert = nil }
-            } message: {
-                Text(subscriptionAlert ?? "")
-            }
+            .foreverCustomerCenter(isPresented: $showCustomerCenter)
             .alert("Not Available", isPresented: Binding(
                 get: { unavailableActionAlert != nil },
                 set: { if !$0 { unavailableActionAlert = nil } }
@@ -360,9 +340,6 @@ struct SettingsView: View {
             } message: {
                 Text(saveDetailsError ?? "")
             }
-            .task {
-                await subscription.refresh()
-            }
         }
     }
 
@@ -371,6 +348,7 @@ struct SettingsView: View {
         if let name = state.currentUser?.displayName {
             displayName = name
         }
+        partnerNickname = state.currentUser?.partnerNickname ?? ""
         if let date = state.currentUser?.anniversaryDate {
             anniversary = date
         }
@@ -384,6 +362,13 @@ struct SettingsView: View {
         let savedName = (state.currentUser?.displayName ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedName != savedName {
+            return true
+        }
+
+        let trimmedPartnerNickname = partnerNickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        let savedPartnerNickname = (state.currentUser?.partnerNickname ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedPartnerNickname != savedPartnerNickname {
             return true
         }
 
@@ -408,13 +393,21 @@ struct SettingsView: View {
         guard !trimmedName.isEmpty, hasUnsavedCoupleDetails else { return }
         guard !isSaving else { return }
 
+        let trimmedPartnerNickname = partnerNickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nicknameToSave = trimmedPartnerNickname.isEmpty ? nil : trimmedPartnerNickname
+
         isSaving = true
         saveDetailsError = nil
         defer { isSaving = false }
 
         do {
-            try await state.updateProfileDetails(name: trimmedName, anniversary: anniversary)
+            try await state.updateProfileDetails(
+                name: trimmedName,
+                partnerNickname: nicknameToSave,
+                anniversary: anniversary
+            )
             displayName = trimmedName
+            partnerNickname = trimmedPartnerNickname
         } catch {
             if !Task.isCancelled {
                 saveDetailsError = error.localizedDescription
@@ -482,6 +475,18 @@ struct SettingsView: View {
         defer { isUploadingAvatar = false }
         do {
             try await state.uploadProfileAvatar(image)
+        } catch {
+            avatarError = error.localizedDescription
+        }
+    }
+
+    /// Removes the profile photo and refreshes widget avatars.
+    private func removeAvatar() async {
+        isUploadingAvatar = true
+        avatarError = nil
+        defer { isUploadingAvatar = false }
+        do {
+            try await state.removeProfileAvatar()
         } catch {
             avatarError = error.localizedDescription
         }

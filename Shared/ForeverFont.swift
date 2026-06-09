@@ -71,20 +71,37 @@ enum ForeverFont {
     }
 
     private static func configureNavigationBarAppearance() {
-        let navigationAppearance = UINavigationBarAppearance()
-        navigationAppearance.configureWithDefaultBackground()
+        let inlineAppearance = UINavigationBarAppearance()
+        inlineAppearance.configureWithDefaultBackground()
+        applyNavigationBarFonts(to: inlineAppearance)
 
-        if let largeTitleFont = UIFont(name: semiboldName, size: 34) {
-            navigationAppearance.largeTitleTextAttributes = [.font: largeTitleFont]
-        }
-        if let inlineTitleFont = UIFont(name: semiboldName, size: 17) {
-            navigationAppearance.titleTextAttributes = [.font: inlineTitleFont]
-        }
+        let largeTitleEdgeAppearance = UINavigationBarAppearance()
+        largeTitleEdgeAppearance.configureWithOpaqueBackground()
+        largeTitleEdgeAppearance.backgroundColor = .systemGroupedBackground
+        largeTitleEdgeAppearance.shadowColor = .clear
+        applyNavigationBarFonts(to: largeTitleEdgeAppearance)
 
         let navigationBar = UINavigationBar.appearance()
-        navigationBar.standardAppearance = navigationAppearance
-        navigationBar.scrollEdgeAppearance = navigationAppearance
-        navigationBar.compactAppearance = navigationAppearance
+        navigationBar.standardAppearance = inlineAppearance
+        navigationBar.compactAppearance = inlineAppearance
+        navigationBar.scrollEdgeAppearance = largeTitleEdgeAppearance
+        navigationBar.compactScrollEdgeAppearance = largeTitleEdgeAppearance
+    }
+
+    /// Applies Gill Sans to large and inline navigation bar titles.
+    private static func applyNavigationBarFonts(to appearance: UINavigationBarAppearance) {
+        if let largeTitleFont = UIFont(name: semiboldName, size: 34) {
+            appearance.largeTitleTextAttributes = [
+                .font: largeTitleFont,
+                .foregroundColor: UIColor.label,
+            ]
+        }
+        if let inlineTitleFont = UIFont(name: semiboldName, size: 17) {
+            appearance.titleTextAttributes = [
+                .font: inlineTitleFont,
+                .foregroundColor: UIColor.label,
+            ]
+        }
     }
 
     private static func configureTabBarAppearance() {

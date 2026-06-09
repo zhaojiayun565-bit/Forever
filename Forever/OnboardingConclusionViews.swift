@@ -35,6 +35,8 @@ struct IntroSelectableOptionRow: View {
     let title: String
     let isSelected: Bool
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         Text(title)
             .font(ForeverFont.header(.headline))
@@ -47,13 +49,15 @@ struct IntroSelectableOptionRow: View {
                     .fill(
                         isSelected
                             ? OnboardingIntroTheme.accent.opacity(0.1)
-                            : Color.white.opacity(0.95)
+                            : OnboardingIntroTheme.elevatedSurface(for: colorScheme)
                     )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OnboardingLayout.selectionCornerRadius, style: .continuous)
                     .stroke(
-                        isSelected ? OnboardingIntroTheme.accent : Color.black.opacity(0.08),
+                        isSelected
+                            ? OnboardingIntroTheme.accent
+                            : OnboardingIntroTheme.subtleBorder(for: colorScheme),
                         lineWidth: isSelected ? 2 : 1
                     )
             )
@@ -72,13 +76,15 @@ private struct IntroJourneyChecklistRow: View {
     let state: JourneyChecklistState
     let showsConnectorBelow: Bool
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(spacing: 0) {
                 indicator
                 if showsConnectorBelow {
                     Rectangle()
-                        .fill(Color.black.opacity(0.08))
+                        .fill(OnboardingIntroTheme.subtleBorder(for: colorScheme))
                         .frame(width: 2, height: 28)
                 }
             }
@@ -166,6 +172,8 @@ struct IntroJourneySummaryView: View {
 struct IntroUpfrontInvestmentView: View {
     let action: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         VStack(spacing: OnboardingLayout.bodyStackSpacing) {
             VStack(spacing: 12) {
@@ -196,7 +204,7 @@ struct IntroUpfrontInvestmentView: View {
                     icon: {
                         ZStack {
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color.white)
+                                .fill(OnboardingIntroTheme.elevatedSurface(for: colorScheme))
                                 .frame(width: 56, height: 56)
                                 .shadow(color: .black.opacity(0.08), radius: 4, y: 2)
                             Image(systemName: "heart.fill")
@@ -232,11 +240,11 @@ struct IntroUpfrontInvestmentView: View {
         .padding(.horizontal, 12)
         .background(
             RoundedRectangle(cornerRadius: OnboardingLayout.selectionCornerRadius, style: .continuous)
-                .fill(Color.white.opacity(0.95))
+                .fill(OnboardingIntroTheme.elevatedSurface(for: colorScheme))
         )
         .overlay(
             RoundedRectangle(cornerRadius: OnboardingLayout.selectionCornerRadius, style: .continuous)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                .stroke(OnboardingIntroTheme.subtleBorder(for: colorScheme), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.04), radius: 8, y: 4)
     }

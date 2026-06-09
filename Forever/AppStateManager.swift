@@ -143,9 +143,20 @@ final class AppStateManager {
         }
     }
 
-    /// Saves display name and anniversary, refreshes local state, and syncs widgets without a full app reload.
-    func updateProfileDetails(name: String, anniversary: Date) async throws {
-        try await supabase.updateProfileDetails(name: name, anniversary: anniversary)
+    /// How the signed-in user sees their partner (nickname override, then partner profile name).
+    var partnerDisplayName: String {
+        let nickname = currentUser?.partnerNickname?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let nickname, !nickname.isEmpty { return nickname }
+        return partnerProfile?.displayName ?? "Partner"
+    }
+
+    /// Saves display name, partner nickname, and anniversary; refreshes local state and widgets.
+    func updateProfileDetails(name: String, partnerNickname: String?, anniversary: Date) async throws {
+        try await supabase.updateProfileDetails(
+            name: name,
+            partnerNickname: partnerNickname,
+            anniversary: anniversary
+        )
         guard let updated = try await supabase.fetchProfile() else { return }
         currentUser = updated
         if let partner = partnerProfile {
@@ -431,13 +442,12 @@ final class AppStateManager {
             didChange = true
         }
 
-        // 4. Name
-        if let name = partner.displayName {
-            let key = "partnerName"
-            if defaults.string(forKey: key) != name {
-                defaults.set(name, forKey: key)
-                didChange = true
-            }
+        // 4. Name (nickname override or partner profile name)
+        let name = partnerDisplayName
+        let nameKey = "partnerName"
+        if defaults.string(forKey: nameKey) != name {
+            defaults.set(name, forKey: nameKey)
+            didChange = true
         }
         syncMyNameToWidgetDefaults(defaults: defaults, didChange: &didChange)
         let preferredDistanceUnit = UserDefaults.standard.string(forKey: "distanceUnit") ?? "mi"
@@ -468,15 +478,18 @@ final class AppStateManager {
             didChange = true
         }
 
-        // 6. Anniversary (stored as epoch seconds)
-        if let date = partner.anniversaryDate {
-            let key = "anniversaryDate"
+        // 6. Anniversary (stored as epoch seconds) — prefer current user's date (editable in Settings)
+        let key = "anniversaryDate"
+        if let date = currentUser?.anniversaryDate ?? partner.anniversaryDate {
             let value = date.timeIntervalSince1970
             let existing = defaults.object(forKey: key) as? Double
             if existing != value {
                 defaults.set(value, forKey: key)
                 didChange = true
             }
+        } else if defaults.object(forKey: key) != nil {
+            defaults.removeObject(forKey: key)
+            didChange = true
         }
 
         // 7. Avatar URLs for widget photo loading
@@ -574,6 +587,28 @@ final class AppStateManager {
             updateWidgetData(partner: partner)
         }
         await syncAvatarImagesToAppGroup()
+    }
+
+    /// Clears the signed-in user's avatar locally and in Supabase.
+    func removeProfileAvatar() async throws {
+        if let urlString = currentUser?.avatarUrl, let url = URL(string: urlString) {
+            try? await ImageCache.default.removeImage(forKey: url.absoluteString)
+        }
+
+        try await supabase.removeProfileAvatar()
+
+        myAvatarImage = nil
+        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) {
+            try? FileManager.default.removeItem(at: container.appendingPathComponent(AppGroup.myAvatarFileName))
+        }
+
+        if let updated = try? await supabase.fetchProfile() {
+            currentUser = updated
+        }
+        if let partner = partnerProfile {
+            updateWidgetData(partner: partner)
+        }
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// After the user enters a partner code, links accounts and refreshes `currentCouple`.

@@ -12,6 +12,7 @@ struct Profile: Codable, Identifiable, Hashable {
     var batteryLevel: Int?
     var latestNoteUrl: String?
     var displayName: String?
+    var partnerNickname: String?
     var avatarUrl: String?
     var latestMessage: String?
     var anniversaryDate: Date?
@@ -29,6 +30,7 @@ struct Profile: Codable, Identifiable, Hashable {
         case batteryLevel = "battery_level"
         case latestNoteUrl = "latest_note_url"
         case displayName = "display_name"
+        case partnerNickname = "partner_nickname"
         case avatarUrl = "avatar_url"
         case latestMessage = "latest_message"
         case anniversaryDate = "anniversary_date"
@@ -229,6 +231,7 @@ extension Profile {
         batteryLevel: 85,
         latestNoteUrl: nil,
         displayName: "Taylor",
+        partnerNickname: nil,
         latestMessage: "Thinking of you",
         anniversaryDate: Date(),
         deviceToken: nil,

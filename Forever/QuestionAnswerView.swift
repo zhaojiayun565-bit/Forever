@@ -4,6 +4,7 @@ import SwiftUI
 struct QuestionAnswerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(AppStateManager.self) private var state
 
     let question: Question
     let partnerName: String
@@ -15,6 +16,12 @@ struct QuestionAnswerView: View {
     @State private var showDiscardAlert = false
     @State private var submitErrorMessage: String?
     @FocusState private var isFocused: Bool
+
+    private var myName: String {
+        let name = state.currentUser?.displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let name, !name.isEmpty else { return "Me" }
+        return name
+    }
 
     private var revealState: AnswerRevealState {
         viewModel.revealState(for: question.id)
@@ -98,18 +105,12 @@ struct QuestionAnswerView: View {
     }
 
     private var lockedSubmissionContent: some View {
-        VStack(spacing: 12) {
-            Label("Great conversation today!", systemImage: "hourglass")
-                .font(ForeverFont.header(.headline))
-                .foregroundStyle(QuestionsTheme.accent)
-
-            Text("Your next prompt unlocks tomorrow.")
-                .font(ForeverFont.subheader(.subheadline))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, OnboardingLayout.horizontalPadding)
-        }
-        .padding(.top, 8)
+        Text(QuestionsTheme.dailyUnlockMessage)
+            .font(ForeverFont.subheader(.subheadline))
+            .foregroundStyle(.primary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, OnboardingLayout.horizontalPadding)
+            .padding(.top, 8)
     }
 
     private var editableSubmissionContent: some View {
@@ -152,33 +153,31 @@ struct QuestionAnswerView: View {
     }
 
     private var waitingContent: some View {
-        VStack(spacing: 12) {
-            Label("Waiting for \(partnerName)", systemImage: "checkmark.circle.fill")
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(QuestionsTheme.accent)
+            (Text("Waiting for ")
+                + Text(partnerName).foregroundStyle(QuestionsTheme.accent))
                 .font(ForeverFont.subheader(.subheadline))
                 .foregroundStyle(.secondary)
-
-            HStack(spacing: 12) {
-                Image(systemName: "lock.fill")
-                    .foregroundStyle(.secondary)
-                Text("\(partnerName)'s answer is locked until they respond.")
-                    .font(ForeverFont.caption())
-                    .foregroundStyle(.secondary)
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(UIColor.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.horizontal, OnboardingLayout.horizontalPadding)
         }
+        .padding(.horizontal, OnboardingLayout.horizontalPadding)
     }
 
     @ViewBuilder
     private var revealedContent: some View {
         if let userId, let answer {
-            HStack(alignment: .top, spacing: 12) {
-                revealedColumn(title: "You", text: answer.myResponse(for: userId) ?? "")
-                revealedColumn(title: partnerName, text: answer.partnerResponse(for: userId) ?? "")
+            VStack(spacing: 16) {
+                answerBubble(
+                    name: myName,
+                    text: answer.myResponse(for: userId) ?? ""
+                )
+                answerBubble(
+                    name: partnerName,
+                    text: answer.partnerResponse(for: userId) ?? ""
+                )
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OnboardingLayout.horizontalPadding)
             .transition(.opacity.combined(with: .scale(scale: 0.96)))
             .animation(
                 reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.82),
@@ -187,18 +186,26 @@ struct QuestionAnswerView: View {
         }
     }
 
-    private func revealedColumn(title: String, text: String) -> some View {
+    private func answerBubble(name: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
+            Text(name)
                 .font(ForeverFont.bold(.caption))
                 .foregroundStyle(QuestionsTheme.accent)
+
             Text(text)
-                .font(ForeverFont.body(.subheadline))
+                .font(ForeverFont.body(.title2))
+                .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(Color(UIColor.secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(Color(UIColor.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func attemptBack() {

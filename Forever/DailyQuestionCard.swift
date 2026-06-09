@@ -75,16 +75,13 @@ struct DailyQuestionCard: View {
             .buttonStyle(ScaleButtonStyle())
 
         case .waiting:
-            VStack(spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(QuestionsTheme.accent)
-                    Text("You've answered — waiting for \(partnerName)")
-                        .font(ForeverFont.subheader(.subheadline))
-                        .foregroundStyle(.secondary)
-                }
-
-                lockedPartnerSlot
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(QuestionsTheme.accent)
+                (Text("You've answered — waiting for ")
+                    + Text(partnerName).foregroundStyle(QuestionsTheme.accent))
+                    .font(ForeverFont.subheader(.subheadline))
+                    .foregroundStyle(.secondary)
             }
 
         case .revealed:
@@ -95,26 +92,8 @@ struct DailyQuestionCard: View {
         }
     }
 
-    private var lockedPartnerSlot: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "lock.fill")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(partnerName)'s answer")
-                    .font(ForeverFont.bold(.subheadline))
-                Text("Answer to reveal")
-                    .font(ForeverFont.caption())
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-        .padding(16)
-        .background(Color(UIColor.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
     private var revealedAnswers: some View {
-        HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
             answerColumn(title: "You", text: myAnswer ?? "")
             answerColumn(title: partnerName, text: partnerAnswer ?? "")
         }

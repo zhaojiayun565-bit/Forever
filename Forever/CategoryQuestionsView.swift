@@ -30,12 +30,11 @@ struct CategoryQuestionsView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 16) {
-                        ForEach(viewModel.sortedQuestions) { question in
+                        ForEach(viewModel.displayOrderedQuestions) { question in
                             questionRow(question)
                         }
                     }
                     .padding(20)
-                    .globalCategoryLockOverlay(isActive: viewModel.isGloballyLocked)
                 }
             }
         }
@@ -87,9 +86,7 @@ struct CategoryQuestionsView: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
 
-                Text(statusLabel(for: revealState))
-                    .font(ForeverFont.subheader(.subheadline))
-                    .foregroundStyle(statusColor(for: revealState))
+                statusSubtitle(for: revealState)
             }
 
             Spacer()
@@ -103,19 +100,22 @@ struct CategoryQuestionsView: View {
         .shadow(color: .black.opacity(0.04), radius: 12, x: 0, y: 6)
     }
 
-    private func statusLabel(for state: AnswerRevealState) -> String {
-        switch state {
-        case .unanswered: "Not answered"
-        case .waiting: "Waiting for partner"
-        case .revealed: "Revealed"
-        }
-    }
-
-    private func statusColor(for state: AnswerRevealState) -> Color {
-        switch state {
-        case .unanswered: .secondary
-        case .waiting: QuestionsTheme.accent
-        case .revealed: QuestionsTheme.accent
+    @ViewBuilder
+    private func statusSubtitle(for revealState: AnswerRevealState) -> some View {
+        switch revealState {
+        case .unanswered:
+            Text("Not answered")
+                .font(ForeverFont.subheader(.subheadline))
+                .foregroundStyle(.secondary)
+        case .waiting:
+            (Text("Waiting for ")
+                + Text(partnerName).foregroundStyle(QuestionsTheme.accent))
+                .font(ForeverFont.subheader(.subheadline))
+                .foregroundStyle(.secondary)
+        case .revealed:
+            Text("Revealed")
+                .font(ForeverFont.subheader(.subheadline))
+                .foregroundStyle(QuestionsTheme.accent)
         }
     }
 }

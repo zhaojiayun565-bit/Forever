@@ -71,6 +71,7 @@ enum ForeverFont {
     }
 
     private static func configureNavigationBarAppearance() {
+        // Scrolled/inline title uses the system bar; large-title scroll edge matches grouped screens (no hairline).
         let inlineAppearance = UINavigationBarAppearance()
         inlineAppearance.configureWithDefaultBackground()
         applyNavigationBarFonts(to: inlineAppearance)

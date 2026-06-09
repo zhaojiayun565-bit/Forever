@@ -140,6 +140,20 @@ final class CategoryQuestionsViewModel {
         CategoryQuestionPacing.sortedQuestions(questions)
     }
 
+    var displayOrderedQuestions: [Question] {
+        CategoryQuestionPacing.displayOrderedQuestions(
+            questions,
+            isLocked: { isQuestionLocked($0) },
+            hasProgress: { hasProgress(for: $0.id) }
+        )
+    }
+
+    /// Whether the couple has any answer progress on this question.
+    func hasProgress(for questionId: UUID) -> Bool {
+        guard let answer = answers[questionId] else { return false }
+        return answer.partnerAAnsweredAt != nil || answer.partnerBAnsweredAt != nil
+    }
+
     /// Detaches from the shared couple-answers realtime hub.
     func stopRealtime() async {
         await supabase.stopObservingCoupleAnswerChanges(token: realtimeObserverToken)

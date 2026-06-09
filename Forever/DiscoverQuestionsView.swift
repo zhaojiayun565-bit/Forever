@@ -26,7 +26,6 @@ struct DiscoverQuestionsView: View {
                             categoryList
                         }
                         .padding(20)
-                        .globalCategoryLockOverlay(isActive: viewModel.hasAnsweredAnyCategoryQuestionToday)
                     }
                 }
             }
@@ -61,17 +60,12 @@ struct DiscoverQuestionsView: View {
     private var categoryList: some View {
         VStack(spacing: 16) {
             ForEach(viewModel.categories) { category in
-                if viewModel.hasAnsweredAnyCategoryQuestionToday {
+                NavigationLink {
+                    CategoryQuestionsView(category: category)
+                } label: {
                     categoryCard(category)
-                        .questionCardLockOverlay(isLocked: true)
-                } else {
-                    NavigationLink {
-                        CategoryQuestionsView(category: category)
-                    } label: {
-                        categoryCard(category)
-                    }
-                    .buttonStyle(.plain)
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -87,18 +81,20 @@ struct DiscoverQuestionsView: View {
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
 
-                if let description = category.description {
-                    Text(description)
-                        .font(ForeverFont.subheader(.subheadline))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                }
+                VStack(alignment: .leading, spacing: 10) {
+                    if let description = category.description {
+                        Text(description)
+                            .font(ForeverFont.subheader(.subheadline))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                    }
 
-                if total > 0 {
-                    Text("\(answered)/\(total) revealed")
-                        .font(ForeverFont.caption())
-                        .foregroundStyle(QuestionsTheme.accent)
+                    if total > 0 {
+                        Text("\(answered)/\(total) revealed")
+                            .font(ForeverFont.caption())
+                            .foregroundStyle(QuestionsTheme.accent)
+                    }
                 }
             }
 

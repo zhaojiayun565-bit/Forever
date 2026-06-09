@@ -1,5 +1,16 @@
 import Foundation
 
+/// Display sort bucket for category question lists.
+enum QuestionListBucket: Int, Comparable {
+    case open = 0
+    case answered = 1
+    case locked = 2
+
+    static func < (lhs: QuestionListBucket, rhs: QuestionListBucket) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+}
+
 /// Evaluates the couple-wide "one category question per day" pacing rules.
 enum CategoryQuestionPacing {
     static let dailySparkCategoryTitle = "The Daily Spark"
@@ -68,6 +79,26 @@ enum CategoryQuestionPacing {
     /// Sorted questions for stable list ordering.
     static func sortedQuestions(_ questions: [Question]) -> [Question] {
         questions.sorted { $0.id.uuidString < $1.id.uuidString }
+    }
+
+    /// List order: open (answerable) first, then answered look-back, then locked.
+    static func displayOrderedQuestions(
+        _ questions: [Question],
+        isLocked: (Question) -> Bool,
+        hasProgress: (Question) -> Bool
+    ) -> [Question] {
+        func bucket(for question: Question) -> QuestionListBucket {
+            if isLocked(question) { return .locked }
+            if hasProgress(question) { return .answered }
+            return .open
+        }
+
+        return questions.sorted {
+            let left = bucket(for: $0)
+            let right = bucket(for: $1)
+            if left != right { return left < right }
+            return $0.id.uuidString < $1.id.uuidString
+        }
     }
 
     private static func hasAnyProgress(_ answer: CoupleAnswer?) -> Bool {

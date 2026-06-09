@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Shared design tokens for the Questions feature.
 enum QuestionsTheme {
-    static let accent = Color(red: 1, green: 90.0 / 255.0, blue: 95.0 / 255.0)
+    static let accent = Color(red: 1, green: 45.0 / 255.0, blue: 85.0 / 255.0) // #FF2D55
+    static let dailyUnlockMessage = "🔒 A new question unlocks daily"
     static let cardBackground = Color(red: 250.0 / 255.0, green: 250.0 / 255.0, blue: 250.0 / 255.0)
 
     /// Card fill that adapts to dark mode.

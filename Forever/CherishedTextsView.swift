@@ -9,7 +9,7 @@ struct CherishedTextsView: View {
     @Environment(AppStateManager.self) private var state
 
     @State private var searchText = ""
-    @State private var selectedItem: PhotosPickerItem?
+    @State private var selectedItems: [PhotosPickerItem] = []
     @State private var isImporting = false
     @State private var showImportDialog = false
     @State private var showPicker = false
@@ -93,15 +93,20 @@ struct CherishedTextsView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-        .photosPicker(isPresented: $showPicker, selection: $selectedItem, matching: pickerFilter)
+        .photosPicker(
+            isPresented: $showPicker,
+            selection: $selectedItems,
+            maxSelectionCount: nil,
+            matching: pickerFilter
+        )
         .overlay {
             if isImporting {
                 importOverlay
             }
         }
-        .onChange(of: selectedItem) { _, newItem in
-            guard let newItem else { return }
-            Task { await importScreenshot(from: newItem) }
+        .onChange(of: selectedItems) { _, newItems in
+            guard !newItems.isEmpty else { return }
+            Task { await importScreenshots(from: newItems) }
         }
         .task(id: syncTaskKey) {
             await startSyncAndRealtime()
@@ -145,7 +150,7 @@ struct CherishedTextsView: View {
             VStack(spacing: 14) {
                 ProgressView()
                     .controlSize(.large)
-                Text("Reading screenshot…")
+                Text("Reading screenshots…")
                     .font(ForeverFont.subheader(.subheadline))
                     .foregroundStyle(.secondary)
             }
@@ -176,25 +181,31 @@ struct CherishedTextsView: View {
         }
     }
 
-    /// Loads a screenshot, persists it, then runs pending OCR and sync.
+    /// Loads selected screenshots, persists them, then runs pending OCR and sync.
     @MainActor
-    private func importScreenshot(from item: PhotosPickerItem) async {
+    private func importScreenshots(from items: [PhotosPickerItem]) async {
         isImporting = true
         defer {
             isImporting = false
-            selectedItem = nil
+            selectedItems = []
         }
 
-        guard let imageData = try? await item.loadTransferable(type: ScreenshotImageData.self)?.data else { return }
+        var didInsert = false
+        for item in items {
+            guard let imageData = try? await item.loadTransferable(type: ScreenshotImageData.self)?.data else {
+                continue
+            }
 
-        let cherishedText = CherishedText(
-            imageData: imageData,
-            extractedText: ""
-        )
+            let cherishedText = CherishedText(
+                imageData: imageData,
+                extractedText: ""
+            )
+            modelContext.insert(cherishedText)
+            didInsert = true
+        }
 
-        modelContext.insert(cherishedText)
+        guard didInsert else { return }
         try? modelContext.save()
-
         await processPendingOCR()
     }
 

@@ -5,6 +5,7 @@ import Observation
 import UIKit
 import WidgetKit
 import Supabase
+import SwiftData
 
 /// Coordinate for map focus after saving a memory; explicit `Equatable` for SwiftUI `onChange`.
 struct NewlyAddedMemoryCoordinate: Equatable {
@@ -657,6 +658,31 @@ final class AppStateManager {
         } catch {
             print("🚨 Failed to unpair: \(error)")
         }
+    }
+
+    /// Clears every local trace of a deleted account and routes back to the start of onboarding.
+    func handleAccountDeleted() async {
+        if let cachedTexts = try? SharedDatabase.context.fetch(FetchDescriptor<CherishedText>()) {
+            cachedTexts.forEach { SharedDatabase.context.delete($0) }
+            try? SharedDatabase.context.save()
+        }
+
+        let localFlags = [
+            "hasCompletedOnboarding",
+            "hasSkippedPairing",
+            "tempMyName",
+            "tempPartnerName",
+            "tempAnniversary",
+            "userIntent",
+            "onboardingCommitmentLevel",
+            OnboardingFlowStorage.postAuthCreatorFunnel,
+            OnboardingFlowStorage.isInvitedPartner,
+            OnboardingFlowStorage.invitePairingEntryOnly
+        ]
+        localFlags.forEach { UserDefaults.standard.removeObject(forKey: $0) }
+
+        memories.removeAll()
+        await initializeApp()
     }
 
     /// Wipes partner-derived values from the App Group so widgets can't show stale data after unpairing.

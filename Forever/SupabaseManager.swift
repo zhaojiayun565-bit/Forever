@@ -104,6 +104,23 @@ final class SupabaseManager: Sendable {
         return userId
     }
 
+    /// Whether the signed-in user authenticated with Sign in with Apple.
+    func isSignedInWithApple() async -> Bool {
+        guard let session = await getSession() else { return false }
+        return session.user.identities?.contains { $0.provider == "apple" } == true
+    }
+
+    /// Permanently deletes the account server-side (data, files, Apple token, RevenueCat customer).
+    func deleteAccount(appleAuthorizationCode: String?) async throws {
+        struct Body: Encodable { let apple_authorization_code: String? }
+        _ = try await client.auth.session
+        try await client.functions.invoke(
+            "delete-account",
+            options: FunctionInvokeOptions(body: Body(apple_authorization_code: appleAuthorizationCode))
+        )
+        try? await client.auth.signOut(scope: .local)
+    }
+
     func signOut() async throws {
         try await client.auth.signOut()
     }

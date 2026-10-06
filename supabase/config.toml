@@ -411,3 +411,8 @@ enabled = true
 # RevenueCat webhooks send a custom Authorization header, not a Supabase JWT; the function verifies both itself.
 verify_jwt = false
 entrypoint = "./functions/revenuecat-sync/index.ts"
+
+[functions.delete-account]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/delete-account/index.ts"

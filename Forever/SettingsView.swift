@@ -41,6 +41,7 @@ struct SettingsView: View {
     @State private var notificationStatusLabel = "Not Set"
     @State private var saveDetailsError: String?
     @State private var coupleDetailsSaveTask: Task<Void, Never>?
+    @State private var accountDeletion = AccountDeletionViewModel()
 
     private var normalizedDistanceUnit: String {
         DistanceUnitOption(rawValue: distanceUnit)?.rawValue ?? DistanceUnitOption.miles.rawValue
@@ -248,6 +249,20 @@ struct SettingsView: View {
                         }
                     }
 
+                    Button(role: .destructive) {
+                        accountDeletion.requestDeletion()
+                    } label: {
+                        HStack {
+                            Image(systemName: "person.crop.circle.badge.xmark")
+                            Text("Delete Account")
+                            Spacer()
+                            if accountDeletion.isDeleting {
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(accountDeletion.isDeleting)
+
                     Button("DEV: Force Reset & Sign Out", role: .destructive) {
                         Task {
                             // 1. Wipe the secure iOS Keychain
@@ -273,6 +288,22 @@ struct SettingsView: View {
                 }
             } message: {
                 Text("This will permanently sever your connection. All shared memories, map pins, and drawings will be deleted for both of you. This cannot be undone.")
+            }
+            .alert("Delete Your Account?", isPresented: $accountDeletion.isConfirming) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete Account", role: .destructive) {
+                    Task { await accountDeletion.confirmDeletion(appState: state) }
+                }
+            } message: {
+                Text("Your profile, photos, memories, drawings, and messages will be permanently deleted, and you'll be unpaired from your partner. This cannot be undone.\n\nDeleting your account doesn't cancel your subscription. Manage it in Settings › Apple ID › Subscriptions.")
+            }
+            .alert("Couldn't Delete Account", isPresented: Binding(
+                get: { accountDeletion.errorMessage != nil },
+                set: { if !$0 { accountDeletion.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { accountDeletion.errorMessage = nil }
+            } message: {
+                Text(accountDeletion.errorMessage ?? "")
             }
             .onAppear {
                 syncCoupleDetailsFromProfile()

@@ -79,6 +79,7 @@ final class AppStateManager {
                     await loadPartnerProfile()
                     subscribeToCoupleLink()
                 }
+                await applyOnboardingDraftIfNeeded()
                 await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
                 await flushPendingDeviceToken()
                 print("✅ SUCCESS: Profile loaded.")
@@ -274,27 +275,25 @@ final class AppStateManager {
         }
     }
 
-    /// Uploads an in-memory onboarding capture when App Group pending data is unavailable.
-    @discardableResult
-    func flushOnboardingMemory(
-        image: UIImage,
-        note: String,
-        coordinate: CLLocationCoordinate2D,
-        createdAt: Date = Date()
-    ) async -> Bool {
-        guard currentUser != nil else { return false }
-        do {
-            try await saveMemory(
-                images: [image],
-                note: note,
-                coordinate: coordinate,
-                date: createdAt
-            )
-            clearPendingOnboardingMemory()
-            return true
-        } catch {
-            print("🚨 Flush onboarding memory error: \(error)")
-            return false
+    /// Uploads onboarding answers captured before sign-in (names, anniversary, first memory).
+    /// Each part is cleared only after it saves, so failures retry on the next launch / sign-in.
+    func applyOnboardingDraftIfNeeded() async {
+        guard let user = currentUser else { return }
+
+        let draft = OnboardingFlowStorage.loadDraft()
+        if draft.hasProfileDetails, let anniversary = draft.anniversary ?? user.anniversaryDate {
+            let name = draft.trimmedMyName.isEmpty ? (user.displayName ?? "") : draft.trimmedMyName
+            let nickname = draft.trimmedPartnerName.isEmpty ? user.partnerNickname : draft.trimmedPartnerName
+            do {
+                try await updateProfileDetails(name: name, partnerNickname: nickname, anniversary: anniversary)
+                OnboardingFlowStorage.clearDraft()
+            } catch {
+                print("🚨 Apply onboarding draft error: \(error)")
+            }
+        }
+
+        if hasPendingOnboardingMemory {
+            await flushPendingOnboardingMemory()
         }
     }
 
@@ -667,19 +666,9 @@ final class AppStateManager {
             try? SharedDatabase.context.save()
         }
 
-        let localFlags = [
-            "hasCompletedOnboarding",
-            "hasSkippedPairing",
-            "tempMyName",
-            "tempPartnerName",
-            "tempAnniversary",
-            "userIntent",
-            "onboardingCommitmentLevel",
-            OnboardingFlowStorage.postAuthCreatorFunnel,
-            OnboardingFlowStorage.isInvitedPartner,
-            OnboardingFlowStorage.invitePairingEntryOnly
-        ]
+        let localFlags = ["hasCompletedOnboarding", "hasSkippedPairing"] + OnboardingFlowStorage.allKeys
         localFlags.forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        clearPendingOnboardingMemory()
 
         memories.removeAll()
         await initializeApp()

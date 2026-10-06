@@ -1,6 +1,52 @@
 import Foundation
 import RevenueCat
 
+/// A free trial the user is eligible for, derived from the StoreKit intro offer.
+struct PaywallTrial: Equatable {
+    let period: SubscriptionPeriod
+
+    /// Hyphenated duration for headlines, e.g. "7-day" or "1-month".
+    var durationLabel: String {
+        switch period.unit {
+        case .day: "\(period.value)-day"
+        case .week: "\(period.value * 7)-day"
+        case .month: "\(period.value)-month"
+        case .year: "\(period.value)-year"
+        @unknown default: "free"
+        }
+    }
+
+    /// Spoken duration for sentences, e.g. "7 days" or "1 month".
+    var durationPhrase: String {
+        let (count, unit): (Int, String) = switch period.unit {
+        case .day: (period.value, "day")
+        case .week: (period.value * 7, "day")
+        case .month: (period.value, "month")
+        case .year: (period.value, "year")
+        @unknown default: (period.value, "day")
+        }
+        return "\(count) \(unit)\(count == 1 ? "" : "s")"
+    }
+
+    /// Calendar date the first payment is taken if the user doesn't cancel.
+    var billingDate: Date {
+        var components = DateComponents()
+        switch period.unit {
+        case .day: components.day = period.value
+        case .week: components.day = period.value * 7
+        case .month: components.month = period.value
+        case .year: components.year = period.value
+        @unknown default: components.day = period.value
+        }
+        return Calendar.current.date(byAdding: components, to: Date()) ?? Date()
+    }
+
+    /// Whole days until billing, used for the timeline labels.
+    var daysUntilBilling: Int {
+        max(1, Calendar.current.dateComponents([.day], from: Date(), to: billingDate).day ?? 1)
+    }
+}
+
 /// Formats RevenueCat package prices for the custom paywall UI.
 enum PaywallPricingFormatter {
     private static let currencyFormatter: NumberFormatter = {
@@ -10,87 +56,77 @@ enum PaywallPricingFormatter {
         return formatter
     }()
 
-    /// Subtext under the offer CTA (e.g. annual price + weekly equivalent).
-    static func priceSubtitle(for package: Package) -> String {
+    /// Subtext under the CTA: billed amount first, then auto-renew terms (trial-aware).
+    static func priceSubtitle(for package: Package, trial: PaywallTrial?) -> String {
         let product = package.storeProduct
         let priceText = product.localizedPriceString
 
         guard let period = product.subscriptionPeriod else {
-            return "then just \(priceText)"
+            return "\(priceText) one-time purchase"
         }
 
-        switch period.unit {
-        case .year:
-            let weekly = formattedWeeklyEquivalent(from: product.price, currencyCode: product.currencyCode)
-            if let weekly {
-                return "then just \(priceText) per year (\(weekly)/week)"
-            }
-            return "then just \(priceText) per year"
-        case .month:
-            return "then just \(priceText) per month"
-        case .week:
-            return "then just \(priceText) per week"
-        default:
-            return "then just \(priceText)"
+        var billed = "\(priceText) per \(unitName(period.unit))"
+        if period.unit == .year, let weekly = formatCurrency(product.price / 52, currencyCode: product.currencyCode) {
+            billed += " (\(weekly)/week)"
         }
+        guard let trial else { return "\(billed). Renews automatically, cancel anytime." }
+        return "Free for \(trial.durationPhrase), then \(billed). Cancel anytime."
     }
 
-    /// Short price label for plan cards (e.g. "$4.17/mo" for yearly).
+    /// Billed amount for plan cards, e.g. "$79.99/yr" (the most prominent price, per App Review 3.1.2).
     static func planCardPriceLabel(for package: Package) -> String {
         let product = package.storeProduct
-        let price = product.localizedPriceString
+        guard let period = product.subscriptionPeriod else { return product.localizedPriceString }
+        return "\(product.localizedPriceString)/\(shortUnitName(period.unit))"
+    }
 
-        guard let period = product.subscriptionPeriod else {
-            return price
-        }
+    /// Secondary monthly equivalent for yearly cards, e.g. "$6.67/mo".
+    static func planCardSecondaryLabel(for package: Package) -> String? {
+        let product = package.storeProduct
+        guard product.subscriptionPeriod?.unit == .year,
+              let monthly = formatCurrency(product.price / 12, currencyCode: product.currencyCode) else { return nil }
+        return "\(monthly)/mo"
+    }
 
-        switch period.unit {
-        case .year:
-            let monthly = product.price / 12
-            if let monthlyText = formatCurrency(monthly, currencyCode: product.currencyCode) {
-                return "\(monthlyText)/mo"
-            }
-            return "\(price)/yr"
-        case .month:
-            return "\(price)/mo"
-        case .week:
-            return "\(price)/wk"
-        default:
-            return price
+    /// "SAVE 40%" computed from real prices; nil when yearly isn't cheaper than 12 months.
+    static func yearlySavingsBadge(yearly: Package?, monthly: Package?) -> String? {
+        guard let yearly = yearly?.storeProduct, let monthly = monthly?.storeProduct,
+              yearly.subscriptionPeriod?.unit == .year, monthly.subscriptionPeriod?.unit == .month else { return nil }
+        let annualizedMonthly = (monthly.price as NSDecimalNumber).doubleValue * 12
+        guard annualizedMonthly > 0 else { return nil }
+        let savings = Int((1 - (yearly.price as NSDecimalNumber).doubleValue / annualizedMonthly) * 100)
+        return savings >= 5 ? "SAVE \(savings)%" : nil
+    }
+
+    /// Billing date copy for the trial timeline.
+    static func billingStartDate(for trial: PaywallTrial) -> String {
+        trial.billingDate.formatted(date: .abbreviated, time: .omitted)
+    }
+
+    /// Purchase CTA, only mentioning a trial when the user will actually get one.
+    static func purchaseCTATitle(trial: PaywallTrial?) -> String {
+        guard let trial else { return "Subscribe" }
+        return "Start my \(trial.durationLabel) free trial"
+    }
+
+    private static func unitName(_ unit: SubscriptionPeriod.Unit) -> String {
+        switch unit {
+        case .day: "day"
+        case .week: "week"
+        case .month: "month"
+        case .year: "year"
+        @unknown default: "period"
         }
     }
 
-    /// Billing date copy for timeline step 3.
-    static func billingStartDate(trialDays: Int = 7) -> String {
-        guard let date = Calendar.current.date(byAdding: .day, value: trialDays, to: Date()) else {
-            return "your trial ends"
+    private static func shortUnitName(_ unit: SubscriptionPeriod.Unit) -> String {
+        switch unit {
+        case .day: "day"
+        case .week: "wk"
+        case .month: "mo"
+        case .year: "yr"
+        @unknown default: "period"
         }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d MMM yyyy"
-        return formatter.string(from: date)
-    }
-
-    /// Badge text for free trial on yearly plan (always shown; falls back to trialDays).
-    static func freeTrialBadgeText(for package: Package?, trialDays: Int = 7) -> String {
-        if let package,
-           let intro = package.storeProduct.introductoryDiscount,
-           intro.paymentMode == .freeTrial {
-            let days = intro.subscriptionPeriod.value
-            let unit = intro.subscriptionPeriod.unit
-            switch unit {
-            case .day where days > 0:
-                return "\(days) DAYS FREE"
-            case .week where days > 0:
-                return "\(days * 7) DAYS FREE"
-            default:
-                break
-            }
-        }
-        return "\(trialDays) DAYS FREE"
-    }
-
-    static func purchaseCTATitle(trialDays: Int = 7) -> String {
-        "Start my \(trialDays)-day FREE trial"
     }
 
     private static func formatCurrency(_ amount: Decimal, currencyCode: String?) -> String? {
@@ -98,9 +134,5 @@ enum PaywallPricingFormatter {
             currencyFormatter.currencyCode = currencyCode
         }
         return currencyFormatter.string(from: amount as NSDecimalNumber)
-    }
-
-    private static func formattedWeeklyEquivalent(from annualPrice: Decimal, currencyCode: String?) -> String? {
-        formatCurrency(annualPrice / 52, currencyCode: currencyCode)
     }
 }

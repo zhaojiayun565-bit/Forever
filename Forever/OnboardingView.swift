@@ -1203,7 +1203,7 @@ struct IntroFeaturePreviewView: View {
             FeaturePage(
                 icon: "location.fill",
                 title: "Live Distance",
-                description: "See exactly how far apart you are directly on your Lock Screen.",
+                description: "See how far apart you are right on your Lock Screen.",
                 buttonTitle: "Continue",
                 usesIntroStyle: true,
                 showsDefaultIcon: false,

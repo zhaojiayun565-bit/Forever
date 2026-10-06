@@ -263,19 +263,16 @@ struct SettingsView: View {
                     }
                     .disabled(accountDeletion.isDeleting)
 
+                    #if DEBUG
                     Button("DEV: Force Reset & Sign Out", role: .destructive) {
                         Task {
-                            // 1. Wipe the secure iOS Keychain
                             try? await SupabaseManager.shared.signOut()
-
-                            // 2. Reset the Onboarding router
                             hasCompletedOnboarding = false
-
-                            // 3. Clear the local UI state so ContentView updates instantly
                             state.currentUser = nil
                             state.currentCouple = nil
                         }
                     }
+                    #endif
                 }
             }
             .navigationTitle("Settings")

@@ -33,6 +33,7 @@ struct LoginView: View {
             Spacer()
 
             VStack(spacing: 12) {
+                #if DEBUG
                 Button {
                     Task {
                         isLoading = true
@@ -55,6 +56,7 @@ struct LoginView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 100, style: .continuous))
                 }
                 .disabled(isLoading)
+                #endif
 
                 SignInWithAppleButton(
                     onRequest: { request in

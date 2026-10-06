@@ -96,13 +96,15 @@ final class SupabaseManager: Sendable {
         )
     }
 
-    /// Creates an anonymous auth session and ensures a profile exists for pairing.
+    #if DEBUG
+    /// Creates an anonymous auth session and ensures a profile exists for pairing (debug builds only).
     func signInAnonymously() async throws -> String {
         let session = try await client.auth.signInAnonymously()
         let userId = session.user.id.uuidString
         try await createProfileIfMissing(userId: userId, fullName: "Anonymous Tester", avatarUrl: nil)
         return userId
     }
+    #endif
 
     /// Whether the signed-in user authenticated with Sign in with Apple.
     func isSignedInWithApple() async -> Bool {

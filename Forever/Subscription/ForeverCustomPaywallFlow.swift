@@ -126,7 +126,6 @@ private enum PaywallStepMetrics {
     static let collageToDockSpacing: CGFloat = 32
     static let bottomDockSpacing: CGFloat = 12
     static let bottomDockHorizontalPadding: CGFloat = 32
-    static let yearlyPlanBadgeText = "40% OFF"
 }
 
 // MARK: - Container
@@ -154,35 +153,37 @@ struct ForeverCustomPaywallFlow: View {
         }
     }
 
-    private var purchaseTrialDays: Int {
-        guard let yearlyPackage = subscription.yearlyPackage,
-              let intro = yearlyPackage.storeProduct.introductoryDiscount,
-              intro.paymentMode == .freeTrial else { return 7 }
-        let period = intro.subscriptionPeriod
-        switch period.unit {
-        case .day: return max(1, period.value)
-        case .week: return max(1, period.value * 7)
-        default: return 7
-        }
+    /// Plan promoted on the intro steps (yearly preferred).
+    private var introPackage: Package? {
+        subscription.yearlyPackage ?? subscription.monthlyPackage
+    }
+
+    /// Free trial the user is actually eligible for on the intro steps.
+    private var introTrial: PaywallTrial? {
+        subscription.freeTrial(for: introPackage)
+    }
+
+    /// Free trial for the plan selected on the purchase step.
+    private var selectedTrial: PaywallTrial? {
+        subscription.freeTrial(for: selectedPackage)
     }
 
     private var bottomDockPackage: Package? {
-        switch step {
-        case .offer, .reminder:
-            subscription.yearlyPackage ?? subscription.monthlyPackage
-        case .purchase:
-            subscription.yearlyPackage ?? selectedPackage
-        }
+        step == .purchase ? selectedPackage : introPackage
+    }
+
+    private var bottomDockTrial: PaywallTrial? {
+        step == .purchase ? selectedTrial : introTrial
     }
 
     private var bottomDockTitle: String {
         switch step {
         case .offer:
-            "Try for $0.00"
+            introTrial == nil ? "Continue" : "Try for $0.00"
         case .reminder:
             "Continue for FREE"
         case .purchase:
-            PaywallPricingFormatter.purchaseCTATitle(trialDays: purchaseTrialDays)
+            PaywallPricingFormatter.purchaseCTATitle(trial: selectedTrial)
         }
     }
 
@@ -207,6 +208,7 @@ struct ForeverCustomPaywallFlow: View {
                         colorScheme: colorScheme,
                         ctaTitle: bottomDockTitle,
                         package: bottomDockPackage,
+                        trial: bottomDockTrial,
                         isEnabled: bottomDockIsEnabled,
                         onCTA: bottomDockAction,
                         onRestore: restorePurchases,
@@ -264,7 +266,7 @@ struct ForeverCustomPaywallFlow: View {
     private var stepContent: some View {
         switch step {
         case .offer:
-            PaywallOfferStepView(colorScheme: colorScheme)
+            PaywallOfferStepView(hasTrial: introTrial != nil, colorScheme: colorScheme)
         case .reminder:
             PaywallReminderStepView(colorScheme: colorScheme)
         case .purchase:
@@ -272,7 +274,7 @@ struct ForeverCustomPaywallFlow: View {
                 monthlyPackage: subscription.monthlyPackage,
                 yearlyPackage: subscription.yearlyPackage,
                 selectedPlan: $selectedPlan,
-                trialDays: purchaseTrialDays,
+                trial: selectedTrial,
                 colorScheme: colorScheme
             )
         }
@@ -282,7 +284,7 @@ struct ForeverCustomPaywallFlow: View {
         switch step {
         case .offer:
             withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
-                step = .reminder
+                step = introTrial == nil ? .purchase : .reminder
             }
         case .reminder:
             advanceFromReminder()
@@ -347,11 +349,12 @@ struct ForeverCustomPaywallFlow: View {
 // MARK: - Step 1: Offer
 
 private struct PaywallOfferStepView: View {
+    let hasTrial: Bool
     let colorScheme: ColorScheme
 
     var body: some View {
         VStack(spacing: 0) {
-            Text("We want you to try Forever for free")
+            Text(hasTrial ? "We want you to try Forever for free" : "Everything you need to stay close")
                 .font(ForeverFont.header(size: 32, relativeTo: .title))
                 .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
                 .multilineTextAlignment(.center)
@@ -408,7 +411,7 @@ private struct PaywallPurchaseStepView: View {
     let monthlyPackage: Package?
     let yearlyPackage: Package?
     @Binding var selectedPlan: PaywallPlanOption
-    let trialDays: Int
+    let trial: PaywallTrial?
     let colorScheme: ColorScheme
 
     var body: some View {
@@ -417,12 +420,21 @@ private struct PaywallPurchaseStepView: View {
                 PaywallPartnerSubheadHeader(colorScheme: colorScheme)
                     .padding(.top, 24)
 
-                PaywallTrialHeadline(trialDays: trialDays, colorScheme: colorScheme)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, PaywallStep3Metrics.subheadToHeadline)
+                if let trial {
+                    PaywallTrialHeadline(trial: trial, colorScheme: colorScheme)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, PaywallStep3Metrics.subheadToHeadline)
 
-                PaywallTrialTimeline(trialDays: trialDays, colorScheme: colorScheme)
-                    .padding(.top, PaywallStep3Metrics.headlineToTimeline)
+                    PaywallTrialTimeline(trial: trial, colorScheme: colorScheme)
+                        .padding(.top, PaywallStep3Metrics.headlineToTimeline)
+                } else {
+                    Text("Unlock Forever\nfor both of you")
+                        .font(ForeverFont.header(size: PaywallStep3Metrics.headlineSize, relativeTo: .title))
+                        .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, PaywallStep3Metrics.subheadToHeadline)
+                }
 
                 PaywallPlanPicker(
                     monthlyPackage: monthlyPackage,
@@ -460,12 +472,12 @@ private struct PaywallPartnerSubheadHeader: View {
 }
 
 private struct PaywallTrialHeadline: View {
-    let trialDays: Int
+    let trial: PaywallTrial
     let colorScheme: ColorScheme
 
     var body: some View {
         VStack(spacing: 0) {
-            Text("Start your \(trialDays)-day")
+            Text("Start your \(trial.durationLabel)")
                 .font(ForeverFont.header(size: PaywallStep3Metrics.headlineSize, relativeTo: .title))
                 .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
 
@@ -495,9 +507,10 @@ private struct PaywallTrialHeadline: View {
 }
 
 private struct PaywallTrialTimeline: View {
-    let trialDays: Int
+    let trial: PaywallTrial
     let colorScheme: ColorScheme
 
+    private var trialDays: Int { trial.daysUntilBilling }
     private var reminderDay: Int { max(1, trialDays - 2) }
 
     var body: some View {
@@ -522,7 +535,7 @@ private struct PaywallTrialTimeline: View {
                 emoji: "💎",
                 isBilling: true,
                 title: "In \(trialDays) Days - Billing Starts",
-                body: "You'll be charged on \(PaywallPricingFormatter.billingStartDate(trialDays: trialDays)) unless you cancel anytime before.",
+                body: "You'll be charged on \(PaywallPricingFormatter.billingStartDate(for: trial)) unless you cancel anytime before.",
                 showsConnector: false
             )
         }
@@ -580,6 +593,7 @@ private struct PaywallPlanPicker: View {
                 PaywallPlanCard(
                     title: "Monthly",
                     priceLabel: PaywallPricingFormatter.planCardPriceLabel(for: monthlyPackage),
+                    secondaryLabel: nil,
                     badge: nil,
                     isSelected: selectedPlan == .monthly,
                     colorScheme: colorScheme
@@ -592,7 +606,8 @@ private struct PaywallPlanPicker: View {
                 PaywallPlanCard(
                     title: "Yearly",
                     priceLabel: PaywallPricingFormatter.planCardPriceLabel(for: yearlyPackage),
-                    badge: PaywallStepMetrics.yearlyPlanBadgeText,
+                    secondaryLabel: PaywallPricingFormatter.planCardSecondaryLabel(for: yearlyPackage),
+                    badge: PaywallPricingFormatter.yearlySavingsBadge(yearly: yearlyPackage, monthly: monthlyPackage),
                     isSelected: selectedPlan == .yearly,
                     colorScheme: colorScheme
                 ) {
@@ -621,6 +636,7 @@ private struct PaywallPlanBadge: View {
 private struct PaywallPlanCard: View {
     let title: String
     let priceLabel: String
+    let secondaryLabel: String?
     let badge: String?
     let isSelected: Bool
     let colorScheme: ColorScheme
@@ -637,7 +653,13 @@ private struct PaywallPlanCard: View {
 
                     Text(priceLabel)
                         .font(ForeverFont.body(size: PaywallStep3Metrics.planPriceSize, relativeTo: .subheadline))
-                        .foregroundStyle(PaywallTheme.secondaryText(for: colorScheme))
+                        .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
+
+                    if let secondaryLabel {
+                        Text(secondaryLabel)
+                            .font(ForeverFont.caption())
+                            .foregroundStyle(PaywallTheme.secondaryText(for: colorScheme))
+                    }
 
                     Spacer(minLength: 0)
                 }
@@ -700,6 +722,7 @@ private struct PaywallBottomDock: View {
     let colorScheme: ColorScheme
     let ctaTitle: String
     let package: Package?
+    let trial: PaywallTrial?
     var isEnabled: Bool = true
     let onCTA: () -> Void
     let onRestore: () -> Void
@@ -708,12 +731,15 @@ private struct PaywallBottomDock: View {
 
     var body: some View {
         VStack(spacing: PaywallStepMetrics.bottomDockSpacing) {
-            PaywallTrustRow(colorScheme: colorScheme)
-                .frame(maxWidth: .infinity)
+            if trial != nil {
+                PaywallTrustRow(colorScheme: colorScheme)
+                    .frame(maxWidth: .infinity)
+            }
 
             PaywallCTABlock(
                 title: ctaTitle,
                 package: package,
+                trial: trial,
                 colorScheme: colorScheme,
                 isEnabled: isEnabled,
                 action: onCTA
@@ -730,10 +756,11 @@ private struct PaywallBottomDock: View {
     }
 }
 
-/// Primary CTA with pricing subtext (e.g. "then just $44.99 per year ($0.94/week)").
+/// Primary CTA with billed-amount and renewal subtext.
 private struct PaywallCTABlock: View {
     let title: String
     let package: Package?
+    let trial: PaywallTrial?
     let colorScheme: ColorScheme
     var isEnabled: Bool = true
     let action: () -> Void
@@ -748,7 +775,7 @@ private struct PaywallCTABlock: View {
             )
 
             if let package {
-                Text(PaywallPricingFormatter.priceSubtitle(for: package))
+                Text(PaywallPricingFormatter.priceSubtitle(for: package, trial: trial))
                     .font(ForeverFont.body(size: PaywallStep3Metrics.ctaSubtextSize, relativeTo: .footnote))
                     .foregroundStyle(PaywallTheme.ctaSubtext(for: colorScheme))
                     .multilineTextAlignment(.center)

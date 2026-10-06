@@ -9,8 +9,14 @@ import Supabase
 final class SubscriptionManager {
     static let shared = SubscriptionManager()
 
-    private(set) var customerInfo: CustomerInfo?
+    private(set) var customerInfo: CustomerInfo? {
+        didSet {
+            TrialReminderScheduler.sync(with: customerInfo?.entitlements[RevenueCatConfiguration.proEntitlementID])
+        }
+    }
     private(set) var offerings: Offerings?
+    /// Intro-offer eligibility per product identifier for the current offering.
+    private(set) var introEligibility: [String: IntroEligibilityStatus] = [:]
     private(set) var isLoading = false
     /// Active premium from Supabase (self or linked partner profile).
     private(set) var hasDatabasePremium = false
@@ -97,6 +103,7 @@ final class SubscriptionManager {
             customerInfo = try await info
             offerings = try await offers
             lastErrorMessage = nil
+            await refreshIntroEligibility()
             await syncPremiumToSupabase()
         } catch {
             lastErrorMessage = error.localizedDescription
@@ -176,6 +183,25 @@ final class SubscriptionManager {
     /// Best package for the hard paywall (yearly trial preferred).
     var preferredTrialPackage: Package? {
         yearlyPackage ?? currentOffering?.availablePackages.first
+    }
+
+    /// Free trial the user would actually receive for this package (offer exists and user is eligible).
+    func freeTrial(for package: Package?) -> PaywallTrial? {
+        guard let product = package?.storeProduct,
+              let intro = product.introductoryDiscount,
+              intro.paymentMode == .freeTrial,
+              introEligibility[product.productIdentifier] == .eligible else { return nil }
+        return PaywallTrial(period: intro.subscriptionPeriod)
+    }
+
+    /// Loads free-trial eligibility so the paywall never promises a trial the user can't get.
+    private func refreshIntroEligibility() async {
+        guard let packages = currentOffering?.availablePackages, !packages.isEmpty else { return }
+        let result = await Purchases.shared.checkTrialOrIntroDiscountEligibility(packages: packages)
+        introEligibility = Dictionary(
+            result.map { ($0.key.storeProduct.productIdentifier, $0.value.status) },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     /// Clears the last surfaced error (e.g. after user dismisses banner).

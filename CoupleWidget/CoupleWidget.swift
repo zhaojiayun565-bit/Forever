@@ -506,7 +506,7 @@ struct StatusWidget: Widget {
             DistanceWidgetView(entry: entry)
         }
         .configurationDisplayName("Distance")
-        .description("Location permission is required for the widget to work!")
+        .description("See how far apart you are. Updates when either of you opens Forever.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

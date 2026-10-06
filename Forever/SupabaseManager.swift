@@ -507,23 +507,10 @@ final class SupabaseManager: Sendable {
             .execute()
     }
 
-    /// Persists RevenueCat premium state on the signed-in user's profile for partner sharing.
-    func updatePremiumStatus(isActive: Bool, expiresAt: Date?) async throws {
-        let session = try await client.auth.session
-        struct PremiumUpdate: Encodable, Sendable {
-            let is_premium: Bool
-            let premium_expires_at: Date?
-            let premium_updated_at: Date
-        }
-        let payload = PremiumUpdate(
-            is_premium: isActive,
-            premium_expires_at: isActive ? expiresAt : nil,
-            premium_updated_at: Date()
-        )
-        try await client.from(DB.profiles)
-            .update(payload)
-            .eq("id", value: session.user.id)
-            .execute()
+    /// Asks the server to re-derive this user's premium state from RevenueCat (clients can't write it).
+    func syncPremiumStatus() async throws {
+        _ = try await client.auth.session
+        try await client.functions.invoke("revenuecat-sync")
     }
 
     /// Stamps `drawing_started_at` so the profiles webhook pushes a "started drawing" alert to the partner.

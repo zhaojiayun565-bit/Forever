@@ -405,3 +405,9 @@ entrypoint = "./functions/apns-sync/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/apns-sync/*.html" ]
+
+[functions.revenuecat-sync]
+enabled = true
+# RevenueCat webhooks send a custom Authorization header, not a Supabase JWT; the function verifies both itself.
+verify_jwt = false
+entrypoint = "./functions/revenuecat-sync/index.ts"

@@ -1,0 +1,19 @@
+# Secrets
+*.p8
+*.p12
+*.mobileprovision
+.env
+.env.*
+
+# Xcode
+xcuserdata/
+DerivedData/
+build/
+*.xcuserstate
+
+# macOS
+.DS_Store
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/

@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import RevenueCat
+import Supabase
 
 /// Owns RevenueCat customer info, offerings, purchases, and Pro entitlement state.
 @MainActor
@@ -41,6 +42,7 @@ final class SubscriptionManager {
     }
 
     private var customerInfoTask: Task<Void, Never>?
+    private var lastSyncedPremium: PremiumSyncSignature?
 
     private init() {}
 
@@ -103,12 +105,7 @@ final class SubscriptionManager {
 
     /// Recomputes shared premium from Supabase profiles (self + partner).
     func refreshSharedPremiumAccess(appState: AppStateManager) async {
-        if hasLocalEntitlement {
-            try? await supabase.updatePremiumStatus(
-                isActive: true,
-                expiresAt: activeProExpirationDate
-            )
-        }
+        await syncPremiumToSupabase()
 
         if let updated = try? await supabase.fetchProfile() {
             appState.currentUser = updated
@@ -186,18 +183,29 @@ final class SubscriptionManager {
         lastErrorMessage = nil
     }
 
-    /// Writes RevenueCat entitlement state to the signed-in user's profile.
+    /// Has the server mirror RevenueCat entitlement state onto the profile; skips if unchanged since last sync.
     private func syncPremiumToSupabase() async {
-        guard await supabase.getSession() != nil else { return }
+        guard let session = await supabase.getSession() else { return }
+        let signature = PremiumSyncSignature(
+            userID: session.user.id,
+            isActive: hasLocalEntitlement,
+            expiresAt: activeProExpirationDate
+        )
+        guard signature != lastSyncedPremium else { return }
         do {
-            try await supabase.updatePremiumStatus(
-                isActive: hasLocalEntitlement,
-                expiresAt: hasLocalEntitlement ? activeProExpirationDate : nil
-            )
+            try await supabase.syncPremiumStatus()
+            lastSyncedPremium = signature
         } catch {
             print("🚨 Premium sync error: \(error)")
         }
     }
+}
+
+/// Entitlement snapshot last mirrored to Supabase, used to avoid redundant server syncs.
+private struct PremiumSyncSignature: Equatable {
+    let userID: UUID
+    let isActive: Bool
+    let expiresAt: Date?
 }
 
 enum SubscriptionError: LocalizedError {

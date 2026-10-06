@@ -250,7 +250,22 @@ async function handleDirectPush(payload: DirectPushPayload): Promise<Response> {
   }, payload.question_id ? { question_id: payload.question_id } : {})
 }
 
+/** True when the caller's JWT has the service_role claim (database triggers via Vault, cron). */
+function isServiceRoleRequest(req: Request): boolean {
+  // Signature is already verified by the gateway (verify_jwt = true in config.toml); only the claim is read here.
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "")
+  const payloadSegment = token.split(".")[1]
+  if (!payloadSegment) return false
+  try {
+    const claims = JSON.parse(atob(payloadSegment.replace(/-/g, "+").replace(/_/g, "/")))
+    return claims.role === "service_role"
+  } catch {
+    return false
+  }
+}
+
 serve(async (req) => {
+  if (!isServiceRoleRequest(req)) return new Response("Forbidden", { status: 403 })
   try {
     const payload = await req.json()
     if (payload.mode === "direct") return await handleDirectPush(payload as DirectPushPayload)

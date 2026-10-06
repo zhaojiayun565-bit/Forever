@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-white text-foreground;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.hero-section,
+.faq-section,
+.scroll-indicator {
+  opacity: 0;
+}
+
+.hero-section.animate-in,
+.faq-section.animate-in,
+.scroll-indicator.animate-in {
+  opacity: 1;
+  animation: fade-in-up 0.8s ease-out forwards;
+}
+
+.feature-section .slide-in-left,
+.feature-section .slide-in-right {
+  opacity: 0;
+}
+
+.feature-section.animate-in .slide-in-left {
+  opacity: 1;
+  animation: slide-in-left 0.6s ease-out forwards;
+}
+
+.feature-section.animate-in .slide-in-right {
+  opacity: 1;
+  animation: slide-in-right 0.6s ease-out forwards;
+}
+
+.arrow-icon {
+  transition: transform 0.3s ease-out;
+}
+
+.group:hover .arrow-icon {
+  transform: translateX(4px);
+}
+
+.faq-answer {
+  overflow: hidden;
+  transition: all 0.3s ease-in-out;
+}
+
+.faq-answer.collapsed {
+  max-height: 0;
+  opacity: 0;
+}
+
+.faq-answer.expanded {
+  max-height: 10rem;
+  opacity: 1;
+}
+
+@media (min-width: 768px) {
+  .faq-answer.expanded {
+    max-height: 12rem;
+  }
+}

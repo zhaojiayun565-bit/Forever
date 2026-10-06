@@ -11,9 +11,9 @@ enum AppSupportConfiguration {
     static var feedbackEmail: String? = supportEmail
     static var feedbackEmailSubject: String = "Forever App Feedback"
 
-    /// Set when legal pages are live (e.g. https://foreverapp.io/terms).
-    static var termsOfServiceURL: URL? = nil
-    static var privacyPolicyURL: URL? = nil
+    static let websiteURL = URL(string: "https://forever-couples-iota.vercel.app")!
+    static var termsOfServiceURL: URL? = websiteURL.appending(path: "terms")
+    static var privacyPolicyURL: URL? = websiteURL.appending(path: "privacy")
 
     static let manageSubscriptionsURL = URL(string: "https://apps.apple.com/account/subscriptions")!
 

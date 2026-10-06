@@ -1,1 +1,1 @@
-export const SUPPORT_EMAIL = "support@foreverapp.io"
+export const SUPPORT_EMAIL = "jiayun.studio@gmail.com"

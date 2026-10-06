@@ -4,7 +4,7 @@ type LegalProseProps = {
   children: React.ReactNode
 }
 
-/** Shared wrapper matching original Munch legal page typography. */
+/** Shared wrapper for privacy and terms pages. */
 export function LegalProse({ title, effectiveDate, children }: LegalProseProps) {
   return (
     <>
@@ -65,7 +65,7 @@ export function LegalLink({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-[#F67939] hover:underline"
+      className="text-[#FF2D55] hover:underline"
     >
       {children}
     </a>
@@ -74,7 +74,7 @@ export function LegalLink({
 
 export function LegalEmailLink({ email }: { email: string }) {
   return (
-    <a href={`mailto:${email}`} className="text-[#F67939] hover:underline">
+    <a href={`mailto:${email}`} className="text-[#FF2D55] hover:underline">
       {email}
     </a>
   )

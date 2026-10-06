@@ -2,11 +2,13 @@ import Foundation
 
 /// Centralized support, legal, and subscription URLs for the Me tab and paywall.
 enum AppSupportConfiguration {
-    /// Set when you have the support page or mailto link.
-    static var contactSupportURL: URL? = nil
+    static let supportEmail = "jiayun.studio@gmail.com"
 
-    /// Set when you have the feedback email.
-    static var feedbackEmail: String? = nil
+    static var contactSupportURL: URL? {
+        mailtoURL(subject: "Forever Support")
+    }
+
+    static var feedbackEmail: String? = supportEmail
     static var feedbackEmailSubject: String = "Forever App Feedback"
 
     /// Set when legal pages are live (e.g. https://foreverapp.io/terms).
@@ -17,13 +19,16 @@ enum AppSupportConfiguration {
 
     /// Builds a mailto URL for share feedback when the email is configured.
     static var feedbackMailtoURL: URL? {
-        guard let feedbackEmail else { return nil }
+        mailtoURL(subject: feedbackEmailSubject, to: feedbackEmail)
+    }
+
+    /// Builds a mailto URL with a prefilled subject.
+    private static func mailtoURL(subject: String, to email: String? = supportEmail) -> URL? {
+        guard let email else { return nil }
         var components = URLComponents()
         components.scheme = "mailto"
-        components.path = feedbackEmail
-        components.queryItems = [
-            URLQueryItem(name: "subject", value: feedbackEmailSubject)
-        ]
+        components.path = email
+        components.queryItems = [URLQueryItem(name: "subject", value: subject)]
         return components.url
     }
 }

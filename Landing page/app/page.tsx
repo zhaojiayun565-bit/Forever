@@ -1,115 +1,100 @@
-"use client"
-
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
-import { MunchCta } from "@/components/munch-cta"
-import { HeroVideoPlaceholder } from "@/components/hero-video-placeholder"
-import { FeatureSection } from "@/components/feature-section"
-import { FaqAccordion } from "@/components/faq-accordion"
-import { useScrollReveal } from "@/lib/use-scroll-reveal"
+import { APP_STORE_URL, BRAND_PINK } from "@/lib/constants"
+import { SUPPORT_EMAIL } from "@/lib/support-email"
 
-export default function Page() {
-  useScrollReveal()
+const features = [
+  {
+    title: "Memory Map",
+    body: "Pin the photos and moments you share to a map you build together.",
+  },
+  {
+    title: "Drawing Board",
+    body: "Doodle a note and it shows up on your partner's Home and Lock Screen.",
+  },
+  {
+    title: "Distance Widget",
+    body: "See how far apart you are, updated whenever either of you opens the app.",
+  },
+  {
+    title: "Daily Questions",
+    body: "Answer a question each day and unlock each other's answers.",
+  },
+]
 
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: "smooth" })
-  }
+const faqs = [
+  {
+    question: "How do I pair with my partner?",
+    answer: "Open the app, share your invite code with your partner, and have them enter it during setup.",
+  },
+  {
+    question: "How do I manage or cancel my subscription?",
+    answer: "Subscriptions are handled by Apple. Open Settings on your iPhone, tap your name, then Subscriptions.",
+  },
+  {
+    question: "How do I delete my account?",
+    answer:
+      "In the app, go to the Me tab and tap Delete Account. This permanently deletes your profile, photos, memories, and drawings, and unpairs you from your partner.",
+  },
+]
 
+export default function Home() {
   return (
-    <div className="flex flex-col min-h-screen bg-white overflow-x-hidden">
-      <SiteHeader onLogoClick={scrollToTop} />
+    <div className="flex flex-col min-h-screen">
+      <SiteHeader />
 
-      <main className="flex-grow" role="main">
-        <section
-          className="hero-section py-8 sm:py-12 md:py-16 px-5 sm:px-6 md:px-8"
-          aria-labelledby="hero-heading"
-        >
-          <div className="max-w-7xl mx-auto">
-            <div className="flex flex-col items-center text-center space-y-4 sm:space-y-6 md:space-y-6">
-              <h1
-                id="hero-heading"
-                className="text-[28px] sm:text-[34px] md:text-[46px] font-bold text-gray-900 leading-tight px-4"
-              >
-                Turn meals into memories
-              </h1>
-              <p className="text-base sm:text-[20px] md:text-[20px] text-gray-600 leading-relaxed max-w-2xl px-4">
-                A visual food diary for your cooking journey.
-              </p>
-              <div className="pt-2">
-                <MunchCta
-                  ariaLabel="Start logging meals with Munch food diary app"
-                >
-                  Start logging meals
-                </MunchCta>
-              </div>
-              <HeroVideoPlaceholder />
-            </div>
-          </div>
+      <main className="flex-grow px-5 sm:px-6 md:px-8" role="main">
+        <section className="max-w-5xl mx-auto py-16 md:py-24">
+          <h1 className="text-5xl md:text-7xl font-semibold tracking-tight leading-tight">
+            Stay close,
+            <br />
+            <span style={{ color: BRAND_PINK }}>wherever you are.</span>
+          </h1>
+          <p className="mt-6 text-lg md:text-xl text-gray-600 max-w-2xl">
+            Forever is a private space for the two of you: your memories, your drawings, and the little things that
+            keep you connected every day.
+          </p>
+          <p className="mt-8 text-base text-gray-500">
+            {APP_STORE_URL ? (
+              <a href={APP_STORE_URL} className="font-medium" style={{ color: BRAND_PINK }}>
+                Download on the App Store
+              </a>
+            ) : (
+              "Coming soon to the App Store."
+            )}
+          </p>
         </section>
 
-        <div
-          className="scroll-indicator flex items-center justify-center gap-2 py-6 sm:hidden"
-          aria-hidden="true"
-        >
-          <span className="text-gray-500 text-sm">Scroll</span>
-          <svg
-            className="w-4 h-4 text-gray-500"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 14l-7 7m0 0l-7-7m7 7V3"
-            />
-          </svg>
-        </div>
+        <section className="max-w-5xl mx-auto pb-16 md:pb-24 grid gap-6 sm:grid-cols-2" aria-label="Features">
+          {features.map((feature) => (
+            <div key={feature.title} className="rounded-3xl bg-gray-50 p-7">
+              <h2 className="text-xl font-semibold">{feature.title}</h2>
+              <p className="mt-2 text-gray-600">{feature.body}</p>
+            </div>
+          ))}
+        </section>
 
-        <FeatureSection
-          id="log-meals-heading"
-          title="Log meals in seconds"
-          description="Save meals with a photo and a note. No calories, no pressure. Just an easy way to track what you actually eat."
-          imageSrc="/images/feature-1.png"
-          imageAlt="Munch app - Log meals feature"
-        />
-
-        <FeatureSection
-          id="patterns-heading"
-          title="See patterns over time"
-          description="View your food by calendar and timeline to spot habits, preferences, and what truly makes you feel good."
-          imageSrc="/images/feature-2.png"
-          imageAlt="Munch app - See patterns over time feature"
-          imageOnLeft
-        />
-
-        <FeatureSection
-          id="food-journey-heading"
-          title="Relive your food journey"
-          description="Like Spotify Wrapped for food. Look back on your favorite meals and the memories attached to them."
-          imageSrc="/images/feature-3.png"
-          imageAlt="Munch app - Relive your food journey feature"
-        />
-
-        <section
-          className="faq-section py-12 sm:py-16 md:py-20 px-5 sm:px-6 md:px-8 bg-white"
-          aria-labelledby="faq-heading"
-        >
-          <div className="max-w-7xl mx-auto">
-            <h2
-              id="faq-heading"
-              className="text-[28px] sm:text-[34px] md:text-[46px] font-bold text-gray-900 text-center mb-8 sm:mb-10 md:mb-12"
-            >
-              FAQ
-            </h2>
-            <FaqAccordion />
-          </div>
+        <section id="support" className="max-w-5xl mx-auto pb-20 md:pb-28 scroll-mt-8">
+          <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Support</h2>
+          <p className="mt-4 text-gray-600">
+            Questions, feedback, or something not working? Email us at{" "}
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium" style={{ color: BRAND_PINK }}>
+              {SUPPORT_EMAIL}
+            </a>{" "}
+            and we&apos;ll get back to you.
+          </p>
+          <dl className="mt-10 space-y-8">
+            {faqs.map((faq) => (
+              <div key={faq.question}>
+                <dt className="text-lg font-semibold">{faq.question}</dt>
+                <dd className="mt-2 text-gray-600">{faq.answer}</dd>
+              </div>
+            ))}
+          </dl>
         </section>
       </main>
 
-      <SiteFooter onLogoClick={scrollToTop} />
+      <SiteFooter />
     </div>
   )
 }

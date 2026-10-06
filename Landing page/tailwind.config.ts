@@ -10,7 +10,7 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-playfair)", "Georgia", "serif"],
+        sans: ["Gill Sans", "Gill Sans MT", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
       },
       borderRadius: {
         lg: "var(--radius)",

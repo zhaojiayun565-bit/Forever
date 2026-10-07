@@ -418,6 +418,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Forever/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Forever uses your camera to take a profile photo that you and your partner see in the app and on widgets.";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Forever uses your location while you use the app to show you and your partner how far apart you are in the app and on your widgets. Only your partner can see it.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Forever uses the photos you choose for memories and your profile, and reads their date and location to pin memories on your shared map.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -455,6 +456,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Forever/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Forever uses your camera to take a profile photo that you and your partner see in the app and on widgets.";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Forever uses your location while you use the app to show you and your partner how far apart you are in the app and on your widgets. Only your partner can see it.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Forever uses the photos you choose for memories and your profile, and reads their date and location to pin memories on your shared map.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

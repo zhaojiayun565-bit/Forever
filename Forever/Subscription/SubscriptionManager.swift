@@ -137,7 +137,9 @@ final class SubscriptionManager {
                 throw SubscriptionError.purchaseCancelled
             }
             customerInfo = result.customerInfo
-            lastErrorMessage = nil
+            lastErrorMessage = hasLocalEntitlement
+                ? nil
+                : "Your purchase went through but Pro didn't unlock. Tap Restore Purchases or contact support."
             await syncPremiumToSupabase()
             return result.customerInfo
         } catch let error as SubscriptionError {

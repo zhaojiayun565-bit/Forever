@@ -275,6 +275,7 @@ struct ForeverCustomPaywallFlow: View {
                 yearlyPackage: subscription.yearlyPackage,
                 selectedPlan: $selectedPlan,
                 trial: selectedTrial,
+                yearlyTrial: subscription.freeTrial(for: subscription.yearlyPackage),
                 colorScheme: colorScheme
             )
         }
@@ -412,6 +413,7 @@ private struct PaywallPurchaseStepView: View {
     let yearlyPackage: Package?
     @Binding var selectedPlan: PaywallPlanOption
     let trial: PaywallTrial?
+    let yearlyTrial: PaywallTrial?
     let colorScheme: ColorScheme
 
     var body: some View {
@@ -440,6 +442,7 @@ private struct PaywallPurchaseStepView: View {
                     monthlyPackage: monthlyPackage,
                     yearlyPackage: yearlyPackage,
                     selectedPlan: $selectedPlan,
+                    yearlyTrial: yearlyTrial,
                     colorScheme: colorScheme
                 )
                 .padding(.top, PaywallStep3Metrics.timelineToPlans)
@@ -585,6 +588,7 @@ private struct PaywallPlanPicker: View {
     let monthlyPackage: Package?
     let yearlyPackage: Package?
     @Binding var selectedPlan: PaywallPlanOption
+    let yearlyTrial: PaywallTrial?
     let colorScheme: ColorScheme
 
     var body: some View {
@@ -607,7 +611,11 @@ private struct PaywallPlanPicker: View {
                     title: "Yearly",
                     priceLabel: PaywallPricingFormatter.planCardPriceLabel(for: yearlyPackage),
                     secondaryLabel: PaywallPricingFormatter.planCardSecondaryLabel(for: yearlyPackage),
-                    badge: PaywallPricingFormatter.yearlySavingsBadge(yearly: yearlyPackage, monthly: monthlyPackage),
+                    badge: PaywallPricingFormatter.planCardBadge(
+                        trial: yearlyTrial,
+                        yearly: yearlyPackage,
+                        monthly: monthlyPackage
+                    ),
                     isSelected: selectedPlan == .yearly,
                     colorScheme: colorScheme
                 ) {

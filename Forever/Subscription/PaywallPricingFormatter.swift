@@ -56,7 +56,7 @@ enum PaywallPricingFormatter {
         return formatter
     }()
 
-    /// Subtext under the CTA: billed amount first, then auto-renew terms (trial-aware).
+    /// Subtext under the CTA, e.g. "then just $49.99 per year ($0.96/week)" during a trial.
     static func priceSubtitle(for package: Package, trial: PaywallTrial?) -> String {
         let product = package.storeProduct
         let priceText = product.localizedPriceString
@@ -69,8 +69,7 @@ enum PaywallPricingFormatter {
         if period.unit == .year, let weekly = formatCurrency(product.price / 52, currencyCode: product.currencyCode) {
             billed += " (\(weekly)/week)"
         }
-        guard let trial else { return "\(billed). Renews automatically, cancel anytime." }
-        return "Free for \(trial.durationPhrase), then \(billed). Cancel anytime."
+        return trial == nil ? "\(billed). Renews automatically, cancel anytime." : "then just \(billed)"
     }
 
     /// Billed amount for plan cards, e.g. "$79.99/yr" (the most prominent price, per App Review 3.1.2).
@@ -98,6 +97,12 @@ enum PaywallPricingFormatter {
         return savings >= 5 ? "SAVE \(savings)%" : nil
     }
 
+    /// Plan card badge: the trial length when eligible (e.g. "7 DAYS FREE"), otherwise the yearly savings.
+    static func planCardBadge(trial: PaywallTrial?, yearly: Package?, monthly: Package?) -> String? {
+        if let trial { return "\(trial.durationPhrase.uppercased()) FREE" }
+        return yearlySavingsBadge(yearly: yearly, monthly: monthly)
+    }
+
     /// Billing date copy for the trial timeline.
     static func billingStartDate(for trial: PaywallTrial) -> String {
         trial.billingDate.formatted(date: .abbreviated, time: .omitted)
@@ -106,7 +111,7 @@ enum PaywallPricingFormatter {
     /// Purchase CTA, only mentioning a trial when the user will actually get one.
     static func purchaseCTATitle(trial: PaywallTrial?) -> String {
         guard let trial else { return "Subscribe" }
-        return "Start my \(trial.durationLabel) free trial"
+        return "Start my \(trial.durationLabel) FREE trial"
     }
 
     private static func unitName(_ unit: SubscriptionPeriod.Unit) -> String {

@@ -9,8 +9,8 @@ enum RevenueCatConfiguration {
     static let apiKey = "test_iMcbsmPOPsVwrQhfcISOcZZfJDu"
     #endif
 
-    /// Entitlement identifier in RevenueCat (display name: Forever: App for Couples Pro).
-    static let proEntitlementID = "pro"
+    /// Entitlement identifier in RevenueCat; must match `REVENUECAT_ENTITLEMENT_ID` on the revenuecat-sync function.
+    static let proEntitlementID = "Forever: App for Couples Pro"
 
     /// App Store product identifiers.
     enum ProductID {

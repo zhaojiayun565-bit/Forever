@@ -20,6 +20,8 @@ struct Profile: Codable, Identifiable, Hashable {
     var isPremium: Bool?
     var premiumExpiresAt: Date?
     var timezone: String?
+    /// Server time of the last location report (stamped by `update_my_location`).
+    var locationUpdatedAt: Date?
     let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -38,7 +40,14 @@ struct Profile: Codable, Identifiable, Hashable {
         case isPremium = "is_premium"
         case premiumExpiresAt = "premium_expires_at"
         case timezone
+        case locationUpdatedAt = "location_updated_at"
         case createdAt = "created_at"
+    }
+
+    /// Last reported location, when both coordinates are present.
+    var coordinate: CLLocationCoordinate2D? {
+        guard let latitude, let longitude else { return nil }
+        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 
     /// Whether this profile row represents an active premium subscription.

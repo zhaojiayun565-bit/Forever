@@ -123,7 +123,9 @@ final class SupabaseManager: Sendable {
         try? await client.auth.signOut(scope: .local)
     }
 
+    /// Detaches this device's push token first so the partner's pushes stop arriving, then signs out.
     func signOut() async throws {
+        try? await clearDeviceToken()
         try await client.auth.signOut()
     }
 
@@ -408,13 +410,18 @@ final class SupabaseManager: Sendable {
         return rows.first
     }
 
-    /// Writes latest location and battery snapshot for the signed-in user.
-    func updateAmbientData(latitude: Double, longitude: Double, batteryLevel: Int) async throws {
-        let session = try await client.auth.session
-        try await client.from(DB.profiles)
-            .update(AmbientDataUpdate(latitude: latitude, longitude: longitude, battery_level: batteryLevel))
-            .eq("id", value: session.user.id)
+    /// Uploads location + battery; the server stamps and returns `location_updated_at`.
+    @discardableResult
+    func updateAmbientData(latitude: Double, longitude: Double, batteryLevel: Int) async throws -> Date {
+        _ = try await client.auth.session
+        return try await client
+            .rpc("update_my_location", params: AmbientDataUpdate(
+                p_latitude: latitude,
+                p_longitude: longitude,
+                p_battery_level: batteryLevel
+            ))
             .execute()
+            .value
     }
 
     func uploadNoteImage(data: Data) async throws -> String {
@@ -442,13 +449,21 @@ final class SupabaseManager: Sendable {
             .execute()
     }
 
+    /// Saves this device's APNs token with its environment so the server picks the matching APNs host.
     func updateDeviceToken(_ token: String) async throws {
         let session = try await client.auth.session
-        let myId = session.user.id
-
         try await client.from(DB.profiles)
-            .update(DeviceTokenUpdateDTO(device_token: token))
-            .eq("id", value: myId)
+            .update(DeviceTokenUpdateDTO(device_token: token, apns_environment: APNsEnvironment.current.rawValue))
+            .eq("id", value: session.user.id)
+            .execute()
+    }
+
+    /// Removes the push token from the profile (sign-out) so no more pushes target this device.
+    func clearDeviceToken() async throws {
+        let session = try await client.auth.session
+        try await client.from(DB.profiles)
+            .update(DeviceTokenUpdateDTO(device_token: nil, apns_environment: nil))
+            .eq("id", value: session.user.id)
             .execute()
     }
 
@@ -1053,9 +1068,9 @@ private nonisolated struct NewCoupleInsert: Encodable, Sendable {
 }
 
 private nonisolated struct AmbientDataUpdate: Encodable, Sendable {
-    let latitude: Double
-    let longitude: Double
-    let battery_level: Int
+    let p_latitude: Double
+    let p_longitude: Double
+    let p_battery_level: Int
 }
 
 private nonisolated struct NoteUpdateDTO: Encodable, Sendable {
@@ -1072,7 +1087,19 @@ private nonisolated struct TimezoneUpdateDTO: Encodable, Sendable {
 }
 
 private nonisolated struct DeviceTokenUpdateDTO: Encodable, Sendable {
-    let device_token: String
+    let device_token: String?
+    let apns_environment: String?
+
+    /// Encodes nils as JSON null so clearing actually nulls the columns.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(device_token, forKey: .device_token)
+        try container.encode(apns_environment, forKey: .apns_environment)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case device_token, apns_environment
+    }
 }
 
 private nonisolated struct MemoryCoupleAttachUpdate: Encodable, Sendable {

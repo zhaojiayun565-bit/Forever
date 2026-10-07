@@ -26,7 +26,7 @@ struct PendingOnboardingMemory: Codable, Equatable {
 @MainActor
 @Observable
 final class AppStateManager {
-    private let supabase: SupabaseManager
+    let supabase: SupabaseManager
 
     var currentUser: Profile?
     var currentCouple: Couple?
@@ -37,15 +37,11 @@ final class AppStateManager {
     /// Set after saving a memory so the map can animate to it; cleared by the map after handling.
     var newlyAddedLocation: NewlyAddedMemoryCoordinate?
     var isLoading = true
-    private var pairingListenerTask: Task<Void, Never>?
-    private var partnerLocationListenerTask: Task<Void, Never>?
-    private var memoriesListenerTask: Task<Void, Never>?
-    private var pairingChannelTopic: String?
-    private var memoriesChannelTopic: String?
-    private var partnerProfileChannelTopic: String?
+    let realtime: RealtimeListenerRegistry
 
     init(supabase: SupabaseManager = .shared) {
         self.supabase = supabase
+        self.realtime = RealtimeListenerRegistry(supabase: supabase)
     }
 
     /// Ensures auth, profile (with a random 6-digit code if new), and couple state are loaded.
@@ -68,16 +64,15 @@ final class AppStateManager {
                 try? await supabase.updateTimezone(TimeZone.current.identifier)
                 loadMyAvatarFromAppGroup()
                 currentCouple = try await supabase.fetchCurrentCouple()
+                AmbientDataManager.shared.resetUploadThrottle()
                 if currentCouple != nil {
                     // Paired: upload our location now (a cold launch never triggers the
-                    // scenePhase `.active` handler), then refresh partner + widgets and
-                    // start listening for the partner's live profile changes.
+                    // scenePhase `.active` handler), then refresh partner + widgets.
+                    startCoupleListeners()
                     await syncAndRefreshWidgets()
-                    subscribeToPartnerProfile()
-                    subscribeToMemories()
                 } else {
-                    await loadPartnerProfile()
-                    subscribeToCoupleLink()
+                    syncMyWidgetDefaults()
+                    startCoupleLinkListener()
                 }
                 await applyOnboardingDraftIfNeeded()
                 await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
@@ -86,7 +81,7 @@ final class AppStateManager {
             } else {
                 await SubscriptionManager.shared.syncUserID(nil)
                 // Not logged in. Clear state so LoginView shows.
-                await cancelRealtimeListeners()
+                await realtime.stopAll()
                 currentUser = nil
                 currentCouple = nil
                 partnerProfile = nil
@@ -97,7 +92,7 @@ final class AppStateManager {
             }
         } catch {
             print("🚨 INIT ERROR: \(error)")
-            await cancelRealtimeListeners()
+            await realtime.stopAll()
             currentUser = nil
             currentCouple = nil
             partnerProfile = nil
@@ -113,29 +108,6 @@ final class AppStateManager {
         let fileURL = container.appendingPathComponent(AppGroup.myAvatarFileName)
         guard let data = try? Data(contentsOf: fileURL), let image = UIImage(data: data) else { return }
         myAvatarImage = image
-    }
-
-    /// Stops all Realtime listener tasks and awaits channel teardown.
-    private func cancelRealtimeListeners() async {
-        pairingListenerTask?.cancel()
-        pairingListenerTask = nil
-        partnerLocationListenerTask?.cancel()
-        partnerLocationListenerTask = nil
-        memoriesListenerTask?.cancel()
-        memoriesListenerTask = nil
-
-        if let pairingChannelTopic {
-            await supabase.tearDownRealtimeChannel(pairingChannelTopic)
-            self.pairingChannelTopic = nil
-        }
-        if let memoriesChannelTopic {
-            await supabase.tearDownRealtimeChannel(memoriesChannelTopic)
-            self.memoriesChannelTopic = nil
-        }
-        if let partnerProfileChannelTopic {
-            await supabase.tearDownRealtimeChannel(partnerProfileChannelTopic)
-            self.partnerProfileChannelTopic = nil
-        }
     }
 
     /// Re-fetches the canonical couple row (e.g. after questions streak updates).
@@ -172,8 +144,8 @@ final class AppStateManager {
     /// then fetches the partner's profile and reloads widget data.
     func syncAndRefreshWidgets() async {
         do {
-            try await AmbientDataManager.shared.syncData()
-            if let updated = try? await supabase.fetchProfile() {
+            if try await AmbientDataManager.shared.syncData(),
+               let updated = try? await supabase.fetchProfile() {
                 currentUser = updated
             }
         } catch {
@@ -388,179 +360,81 @@ final class AppStateManager {
         }
     }
 
-    /// Pushes partner fields to the App Group UserDefaults and reloads widgets only when values change.
+    /// Pushes partner + self fields to the App Group and reloads only the widgets whose data changed.
     private func updateWidgetData(partner: Profile) {
-        guard let defaults = UserDefaults(suiteName: "group.com.jiayunzhao.Forever") else { return }
+        guard var writer = WidgetDefaultsWriter() else { return }
 
-        var didChange = false
-
-        // 1. Battery
-        if let battery = partner.batteryLevel {
-            let key = "partnerBattery"
-            let existing = defaults.object(forKey: key) as? Int
-            if existing != battery {
-                defaults.set(battery, forKey: key)
-                didChange = true
-            }
+        let myCoordinate = currentUser?.coordinate
+        let partnerCoordinate = partner.coordinate
+        writer.setCoordinate(myCoordinate, latitudeKey: WidgetDefaultsKey.myLatitude, longitudeKey: WidgetDefaultsKey.myLongitude)
+        writer.setCoordinate(partnerCoordinate, latitudeKey: WidgetDefaultsKey.partnerLatitude, longitudeKey: WidgetDefaultsKey.partnerLongitude)
+        if let myCoordinate, let partnerCoordinate {
+            let miles = CLLocation(latitude: myCoordinate.latitude, longitude: myCoordinate.longitude)
+                .distance(from: CLLocation(latitude: partnerCoordinate.latitude, longitude: partnerCoordinate.longitude)) / 1609.344
+            writer.set((miles * 100).rounded() / 100, forKey: WidgetDefaultsKey.partnerDistance, affects: WidgetKind.distance)
         }
+        writer.set(
+            partner.locationUpdatedAt?.timeIntervalSince1970,
+            forKey: WidgetDefaultsKey.partnerLocationUpdatedAt,
+            affects: WidgetKind.distance
+        )
+        writer.set(
+            UserDefaults.standard.string(forKey: "distanceUnit") ?? "mi",
+            forKey: "distanceUnit",
+            affects: WidgetKind.distance
+        )
 
-        // 2. Distance + raw coordinates for the map widget
-        if let myLat = currentUser?.latitude, let myLon = currentUser?.longitude,
-           let pLat = partner.latitude, let pLon = partner.longitude {
-            let myLocation = CLLocation(latitude: myLat, longitude: myLon)
-            let partnerLocation = CLLocation(latitude: pLat, longitude: pLon)
-            let distanceInMeters = myLocation.distance(from: partnerLocation)
-            let distanceInMiles = distanceInMeters / 1609.344
-
-            let key = "partnerDistance"
-            let existing = defaults.object(forKey: key) as? Double
-            let epsilonMiles = 0.0005
-            let distanceChanged = existing.map { abs($0 - distanceInMiles) > epsilonMiles } ?? true
-            if distanceChanged {
-                defaults.set(distanceInMiles, forKey: key)
-                didChange = true
-            }
-
-            // Explicit coordinate keys read by the distance map widget
-            defaults.set(myLat, forKey: "myLatitude")
-            defaults.set(myLon, forKey: "myLongitude")
-            defaults.set(pLat, forKey: "partnerLatitude")
-            defaults.set(pLon, forKey: "partnerLongitude")
-            defaults.set(Date().timeIntervalSince1970, forKey: "partnerLocationUpdatedAt")
-            didChange = true
-        }
-
-        // 3. Note URL
-        let noteKey = "partnerNoteUrl"
-        if let noteUrl = partner.latestNoteUrl {
-            if defaults.string(forKey: noteKey) != noteUrl {
-                defaults.set(noteUrl, forKey: noteKey)
-                didChange = true
-            }
-        } else if defaults.object(forKey: noteKey) != nil {
-            defaults.removeObject(forKey: noteKey)
-            didChange = true
-        }
-
-        // 4. Name (nickname override or partner profile name)
-        let name = partnerDisplayName
-        let nameKey = "partnerName"
-        if defaults.string(forKey: nameKey) != name {
-            defaults.set(name, forKey: nameKey)
-            didChange = true
-        }
-        syncMyNameToWidgetDefaults(defaults: defaults, didChange: &didChange)
-        let preferredDistanceUnit = UserDefaults.standard.string(forKey: "distanceUnit") ?? "mi"
-        if defaults.string(forKey: "distanceUnit") != preferredDistanceUnit {
-            defaults.set(preferredDistanceUnit, forKey: "distanceUnit")
-            didChange = true
-        }
-
-        // 5. Lock screen messages
-        if let msg = partner.latestMessage {
-            let key = "partnerMessage"
-            if defaults.string(forKey: key) != msg {
-                defaults.set(msg, forKey: key)
-                didChange = true
-            }
-        } else if defaults.object(forKey: "partnerMessage") != nil {
-            defaults.removeObject(forKey: "partnerMessage")
-            didChange = true
-        }
-        if let myMsg = currentUser?.latestMessage {
-            let key = "myMessage"
-            if defaults.string(forKey: key) != myMsg {
-                defaults.set(myMsg, forKey: key)
-                didChange = true
-            }
-        } else if defaults.object(forKey: "myMessage") != nil {
-            defaults.removeObject(forKey: "myMessage")
-            didChange = true
-        }
-
-        // 6. Anniversary (stored as epoch seconds) — prefer current user's date (editable in Settings)
-        let key = "anniversaryDate"
-        if let date = currentUser?.anniversaryDate ?? partner.anniversaryDate {
-            let value = date.timeIntervalSince1970
-            let existing = defaults.object(forKey: key) as? Double
-            if existing != value {
-                defaults.set(value, forKey: key)
-                didChange = true
-            }
-        } else if defaults.object(forKey: key) != nil {
-            defaults.removeObject(forKey: key)
-            didChange = true
-        }
-
-        // 7. Avatar URLs for widget photo loading
-        syncAvatarURL(defaults: defaults, key: "myAvatarUrl", url: currentUser?.avatarUrl, didChange: &didChange)
-        syncAvatarURL(defaults: defaults, key: "partnerAvatarUrl", url: partner.avatarUrl, didChange: &didChange)
-
-        if didChange {
-            WidgetCenter.shared.reloadAllTimelines()
-        }
+        writer.set(partner.latestNoteUrl, forKey: WidgetDefaultsKey.partnerNoteUrl, affects: [WidgetKind.drawing])
+        writer.set(partnerDisplayName, forKey: "partnerName", affects: WidgetKind.all)
+        writer.set(partner.latestMessage, forKey: WidgetDefaultsKey.partnerMessage, affects: [WidgetKind.lockScreenMessage, WidgetKind.distanceHome])
+        writer.set(currentUser?.latestMessage, forKey: "myMessage", affects: [WidgetKind.distanceHome])
+        writer.set(
+            (currentUser?.anniversaryDate ?? partner.anniversaryDate)?.timeIntervalSince1970,
+            forKey: "anniversaryDate",
+            affects: [WidgetKind.daysTogether]
+        )
+        writer.set(partner.avatarUrl, forKey: "partnerAvatarUrl", affects: [WidgetKind.distanceHome, WidgetKind.daysTogether])
+        writeMyWidgetFields(into: &writer)
+        writer.reload()
     }
 
-    /// Persists the signed-in user's name and anniversary to widget defaults when unpaired.
+    /// Persists the signed-in user's name, avatar, and anniversary to widget defaults when unpaired.
     private func syncMyWidgetDefaults() {
-        guard let defaults = UserDefaults(suiteName: "group.com.jiayunzhao.Forever") else { return }
-
-        var didChange = false
-        syncMyNameToWidgetDefaults(defaults: defaults, didChange: &didChange)
-
+        guard var writer = WidgetDefaultsWriter() else { return }
+        writeMyWidgetFields(into: &writer)
         if let date = currentUser?.anniversaryDate {
-            let key = "anniversaryDate"
-            let value = date.timeIntervalSince1970
-            let existing = defaults.object(forKey: key) as? Double
-            if existing != value {
-                defaults.set(value, forKey: key)
-                didChange = true
-            }
+            writer.set(date.timeIntervalSince1970, forKey: "anniversaryDate", affects: [WidgetKind.daysTogether])
         }
-
-        if didChange {
-            WidgetCenter.shared.reloadAllTimelines()
-        }
+        writer.reload()
     }
 
-    /// Writes the signed-in user's display name to widget defaults when it changes.
-    private func syncMyNameToWidgetDefaults(defaults: UserDefaults, didChange: inout Bool) {
+    /// Writes fields owned by the signed-in user (name, avatar URL).
+    private func writeMyWidgetFields(into writer: inout WidgetDefaultsWriter) {
         if let myName = currentUser?.displayName {
-            if defaults.string(forKey: "myName") != myName {
-                defaults.set(myName, forKey: "myName")
-                didChange = true
-            }
+            writer.set(myName, forKey: "myName", affects: WidgetKind.all)
         }
+        writer.set(currentUser?.avatarUrl, forKey: "myAvatarUrl", affects: [WidgetKind.distanceHome, WidgetKind.daysTogether])
     }
 
-    /// Writes an avatar URL to the App Group when it changes.
-    private func syncAvatarURL(defaults: UserDefaults, key: String, url: String?, didChange: inout Bool) {
-        if let url {
-            if defaults.string(forKey: key) != url {
-                defaults.set(url, forKey: key)
-                didChange = true
-            }
-        } else if defaults.object(forKey: key) != nil {
-            defaults.removeObject(forKey: key)
-            didChange = true
-        }
-    }
-
-    /// Downloads avatar images into the App Group so widgets can render them offline.
+    /// Downloads avatar images into the App Group (only when the URL changed) so widgets render them offline.
     func syncAvatarImagesToAppGroup() async {
-        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) else { return }
+        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName),
+              var writer = WidgetDefaultsWriter() else { return }
 
-        if let urlString = currentUser?.avatarUrl, let url = URL(string: urlString),
-           let data = try? await URLSession.shared.data(from: url).0 {
-            try? data.write(to: container.appendingPathComponent(AppGroup.myAvatarFileName), options: .atomic)
+        let avatars: [(url: String?, fileName: String, cacheKey: String)] = [
+            (currentUser?.avatarUrl, AppGroup.myAvatarFileName, "myAvatarCachedUrl"),
+            (partnerProfile?.avatarUrl, AppGroup.partnerAvatarFileName, "partnerAvatarCachedUrl")
+        ]
+        for avatar in avatars {
+            let fileURL = container.appendingPathComponent(avatar.fileName)
+            guard let urlString = avatar.url, let url = URL(string: urlString) else { continue }
+            let isCached = writer.defaults.string(forKey: avatar.cacheKey) == urlString
+                && FileManager.default.fileExists(atPath: fileURL.path)
+            guard !isCached, let data = try? await URLSession.shared.data(from: url).0 else { continue }
+            try? data.write(to: fileURL, options: .atomic)
+            writer.set(urlString, forKey: avatar.cacheKey, affects: [WidgetKind.distanceHome, WidgetKind.daysTogether])
         }
-
-        if let urlString = partnerProfile?.avatarUrl, let url = URL(string: urlString),
-           let data = try? await URLSession.shared.data(from: url).0 {
-            try? data.write(to: container.appendingPathComponent(AppGroup.partnerAvatarFileName), options: .atomic)
-        }
-
-        WidgetCenter.shared.reloadAllTimelines()
+        writer.reload()
     }
 
     /// Saves a freshly picked avatar locally and uploads it to Supabase.
@@ -586,7 +460,15 @@ final class AppStateManager {
         if let partner = partnerProfile {
             updateWidgetData(partner: partner)
         }
-        await syncAvatarImagesToAppGroup()
+        markAvatarWidgetsChanged(cachedURL: currentUser?.avatarUrl)
+    }
+
+    /// Records the avatar URL now cached on disk and reloads widgets that show avatars.
+    private func markAvatarWidgetsChanged(cachedURL: String?) {
+        guard var writer = WidgetDefaultsWriter() else { return }
+        writer.set(cachedURL, forKey: "myAvatarCachedUrl", affects: [])
+        writer.markChanged([WidgetKind.distanceHome, WidgetKind.daysTogether])
+        writer.reload()
     }
 
     /// Clears the signed-in user's avatar locally and in Supabase.
@@ -608,27 +490,25 @@ final class AppStateManager {
         if let partner = partnerProfile {
             updateWidgetData(partner: partner)
         }
-        WidgetCenter.shared.reloadAllTimelines()
+        markAvatarWidgetsChanged(cachedURL: nil)
     }
 
     /// After the user enters a partner code, links accounts and refreshes `currentCouple`.
     func linkWithPartner(code: String) async throws {
-        pairingListenerTask?.cancel()
-        pairingListenerTask = nil
-        if let pairingChannelTopic {
-            await supabase.tearDownRealtimeChannel(pairingChannelTopic)
-            self.pairingChannelTopic = nil
-        }
         let newlyFetchedCouple = try await supabase.linkPartner(code: code)
-        currentCouple = newlyFetchedCouple
         guard let user = currentUser else { return }
         try await supabase.attachSoloMemoriesToCouple(coupleId: newlyFetchedCouple.id, creatorId: user.id)
-        await loadPartnerProfile()
+        await didPair(with: newlyFetchedCouple)
+    }
+
+    /// Shared setup once a couple exists (we entered a code, or the partner entered ours).
+    func didPair(with couple: Couple) async {
+        currentCouple = couple
+        startCoupleListeners()
+        AmbientDataManager.shared.resetUploadThrottle()
+        await syncAndRefreshWidgets()
         await loadMemories()
-        subscribeToPartnerProfile()
-        subscribeToMemories()
         await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
-        WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// Tears down the couple server-side, then clears local + widget state.
@@ -642,18 +522,7 @@ final class AppStateManager {
             // Atomically delete the couple, its memories, and drawings server-side first.
             try await supabase.unpairCouple()
 
-            // Reset local state so routing returns to pairing flow.
-            await cancelRealtimeListeners()
-            currentCouple = nil
-            partnerProfile = nil
-            memories.removeAll()
-            clearPartnerWidgetData()
-            WidgetCenter.shared.reloadAllTimelines()
-            subscribeToCoupleLink()
-            await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
-            OnboardingFlowStorage.clearInvitePairingEntryOnly()
-
-            print("✅ Successfully unpaired. UI should now route to PairingView.")
+            await resetCoupleState()
         } catch {
             print("🚨 Failed to unpair: \(error)")
         }
@@ -675,7 +544,7 @@ final class AppStateManager {
     }
 
     /// Wipes partner-derived values from the App Group so widgets can't show stale data after unpairing.
-    private func clearPartnerWidgetData() {
+    func clearPartnerWidgetData() {
         clearWidgetData(includePersonalData: false)
     }
 
@@ -693,6 +562,7 @@ final class AppStateManager {
             "partnerMessage",
             "myMessage",
             "partnerAvatarUrl",
+            "partnerAvatarCachedUrl",
             "anniversaryDate"
         ]
         partnerKeys.forEach { defaults.removeObject(forKey: $0) }
@@ -703,7 +573,8 @@ final class AppStateManager {
                 "myLongitude",
                 "myName",
                 "myMessage",
-                "myAvatarUrl"
+                "myAvatarUrl",
+                "myAvatarCachedUrl"
             ]
             personalKeys.forEach { defaults.removeObject(forKey: $0) }
         }
@@ -713,158 +584,6 @@ final class AppStateManager {
             if includePersonalData {
                 try? FileManager.default.removeItem(at: container.appendingPathComponent(AppGroup.myAvatarFileName))
             }
-        }
-    }
-
-    /// Subscribes to Realtime INSERT events on `couples` so the waiting partner's app
-    /// transitions automatically when the other person enters their code.
-    private func subscribeToCoupleLink() {
-        guard let userId = currentUser?.id else { return }
-        let topic = "couple-link-\(userId)"
-        pairingListenerTask?.cancel()
-        pairingListenerTask = nil
-        pairingChannelTopic = topic
-
-        pairingListenerTask = Task {
-            let channel = await supabase.preparedRealtimeChannel(topic)
-            guard !Task.isCancelled else { return }
-
-            let inserts = channel.postgresChange(
-                InsertAction.self, schema: "public", table: "couples"
-            )
-
-            let consumeTask = Task {
-                for await _ in inserts {
-                    guard !Task.isCancelled else { return }
-                    if let couple = try? await supabase.fetchCurrentCouple() {
-                        currentCouple = couple
-                        await loadPartnerProfile()
-                        await loadMemories()
-                        subscribeToPartnerProfile()
-                        subscribeToMemories()
-                        await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
-                    }
-                    return
-                }
-            }
-
-            do {
-                try await channel.subscribeWithError()
-            } catch {
-                consumeTask.cancel()
-                print("🚨 Couple-link subscribe failed: \(error)")
-                await supabase.tearDownRealtimeChannel(topic)
-                return
-            }
-
-            await consumeTask.value
-            await supabase.tearDownRealtimeChannel(topic)
-        }
-    }
-
-    /// Subscribes to Realtime INSERT/UPDATE/DELETE on `memories` so the map refreshes
-    /// the moment either partner adds, edits, or removes a pin.
-    private func subscribeToMemories() {
-        guard let coupleId = currentCouple?.id else { return }
-
-        let topic = "couple-memories-\(coupleId)"
-        memoriesListenerTask?.cancel()
-        memoriesListenerTask = nil
-        memoriesChannelTopic = topic
-
-        memoriesListenerTask = Task {
-            let channel = await supabase.preparedRealtimeChannel(topic)
-            guard !Task.isCancelled else { return }
-
-            let filter = "couple_id=eq.\(coupleId)"
-            let inserts = channel.postgresChange(
-                InsertAction.self, schema: "public", table: "memories", filter: filter
-            )
-            let updates = channel.postgresChange(
-                UpdateAction.self, schema: "public", table: "memories", filter: filter
-            )
-            let deletes = channel.postgresChange(
-                DeleteAction.self, schema: "public", table: "memories", filter: filter
-            )
-
-            let consumeTask = Task {
-                await withTaskGroup(of: Void.self) { group in
-                    group.addTask {
-                        for await _ in inserts {
-                            guard !Task.isCancelled else { return }
-                            await self.loadMemories()
-                        }
-                    }
-                    group.addTask {
-                        for await _ in updates {
-                            guard !Task.isCancelled else { return }
-                            await self.loadMemories()
-                        }
-                    }
-                    group.addTask {
-                        for await _ in deletes {
-                            guard !Task.isCancelled else { return }
-                            await self.loadMemories()
-                        }
-                    }
-                }
-            }
-
-            do {
-                try await channel.subscribeWithError()
-            } catch {
-                consumeTask.cancel()
-                print("🚨 Memories subscribe failed: \(error)")
-                await supabase.tearDownRealtimeChannel(topic)
-                return
-            }
-
-            await consumeTask.value
-            await supabase.tearDownRealtimeChannel(topic)
-        }
-    }
-
-    /// Subscribes to Realtime UPDATE events on the partner's `profiles` row so distance,
-    /// widgets, and shared premium refresh when the partner's row changes.
-    private func subscribeToPartnerProfile() {
-        guard let couple = currentCouple, let myId = currentUser?.id else { return }
-        let partnerId = couple.user1Id == myId ? couple.user2Id : couple.user1Id
-
-        let topic = "partner-profile-\(partnerId)"
-        partnerLocationListenerTask?.cancel()
-        partnerLocationListenerTask = nil
-        partnerProfileChannelTopic = topic
-
-        partnerLocationListenerTask = Task {
-            let channel = await supabase.preparedRealtimeChannel(topic)
-            guard !Task.isCancelled else { return }
-
-            let updates = channel.postgresChange(
-                UpdateAction.self,
-                schema: "public",
-                table: "profiles",
-                filter: "id=eq.\(partnerId)"
-            )
-
-            let consumeTask = Task {
-                for await _ in updates {
-                    guard !Task.isCancelled else { return }
-                    await loadPartnerProfile()
-                    await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
-                }
-            }
-
-            do {
-                try await channel.subscribeWithError()
-            } catch {
-                consumeTask.cancel()
-                print("🚨 Partner-profile subscribe failed: \(error)")
-                await supabase.tearDownRealtimeChannel(topic)
-                return
-            }
-
-            await consumeTask.value
-            await supabase.tearDownRealtimeChannel(topic)
         }
     }
 

@@ -34,12 +34,6 @@ enum WidgetDefaultsKey {
     static let partnerLocationUpdatedAt = "partnerLocationUpdatedAt"
 }
 
-/// Widget kind identifiers matching CoupleWidget target definitions.
-enum WidgetKind {
-    static let distanceHome = "StatusWidget"
-    static let distanceLockScreen = "DistanceLockScreenWidget"
-}
-
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Set the delegate so foreground notifications show up, but DO NOT request authorization here!
@@ -63,8 +57,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     /// Applies push payload to App Group defaults, then reloads widget timelines.
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
         Task { @MainActor in
-            let didUpdateLocation = Self.syncWidgetDefaults(from: userInfo)
-            Self.reloadWidgets(for: userInfo, didUpdateLocation: didUpdateLocation)
+            Self.applyPushToWidgets(userInfo)
             completionHandler(.newData)
         }
     }
@@ -72,8 +65,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     // Allow notifications to show as banners even when the app is open
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         let userInfo = notification.request.content.userInfo
-        let didUpdateLocation = Self.syncWidgetDefaults(from: userInfo)
-        Self.reloadWidgets(for: userInfo, didUpdateLocation: didUpdateLocation)
+        Self.applyPushToWidgets(userInfo)
 
         if userInfo["type"] as? String == "location" {
             completionHandler([])
@@ -100,54 +92,53 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         completionHandler()
     }
 
-    /// Reloads distance widgets only for silent location pushes; all widgets otherwise.
-    private static func reloadWidgets(for userInfo: [AnyHashable: Any], didUpdateLocation: Bool) {
-        if userInfo["type"] as? String == "location", didUpdateLocation {
-            WidgetCenter.shared.reloadTimelines(ofKind: WidgetKind.distanceHome)
-            WidgetCenter.shared.reloadTimelines(ofKind: WidgetKind.distanceLockScreen)
-        } else {
-            WidgetCenter.shared.reloadAllTimelines()
-        }
-    }
-
-    /// Writes push payload fields into the App Group so widget reloads fetch fresh data.
-    @discardableResult
-    private static func syncWidgetDefaults(from userInfo: [AnyHashable: Any]) -> Bool {
-        guard let defaults = UserDefaults(suiteName: AppGroup.suiteName) else { return false }
+    /// Writes push payload fields into the App Group and reloads only the widgets they affect.
+    @MainActor
+    private static func applyPushToWidgets(_ userInfo: [AnyHashable: Any]) {
+        guard var writer = WidgetDefaultsWriter() else { return }
 
         if let noteUrl = userInfo["note_url"] as? String, !noteUrl.isEmpty {
-            defaults.set(noteUrl, forKey: WidgetDefaultsKey.partnerNoteUrl)
+            writer.set(noteUrl, forKey: WidgetDefaultsKey.partnerNoteUrl, affects: [WidgetKind.drawing])
         }
         if let message = userInfo["latest_message"] as? String, !message.isEmpty {
-            defaults.set(message, forKey: WidgetDefaultsKey.partnerMessage)
+            writer.set(message, forKey: WidgetDefaultsKey.partnerMessage, affects: [WidgetKind.lockScreenMessage, WidgetKind.distanceHome])
         }
 
-        guard userInfo["type"] as? String == "location" else { return false }
+        if userInfo["type"] as? String == "location",
+           let partnerLat = doubleValue(from: userInfo["partner_latitude"]),
+           let partnerLon = doubleValue(from: userInfo["partner_longitude"]) {
+            let partnerCoordinate = CLLocationCoordinate2D(latitude: partnerLat, longitude: partnerLon)
+            writer.setCoordinate(
+                partnerCoordinate,
+                latitudeKey: WidgetDefaultsKey.partnerLatitude,
+                longitudeKey: WidgetDefaultsKey.partnerLongitude
+            )
+            let updatedAt = (userInfo["partner_location_updated_at"] as? String).flatMap(parseServerDate) ?? Date()
+            writer.set(updatedAt.timeIntervalSince1970, forKey: WidgetDefaultsKey.partnerLocationUpdatedAt, affects: WidgetKind.distance)
 
-        guard
-            let partnerLat = doubleValue(from: userInfo["partner_latitude"]),
-            let partnerLon = doubleValue(from: userInfo["partner_longitude"])
-        else {
-            return false
+            if let miles = doubleValue(from: userInfo["partner_distance"]) ?? distanceFromMyLocation(to: partnerCoordinate, in: writer.defaults) {
+                writer.set((miles * 100).rounded() / 100, forKey: WidgetDefaultsKey.partnerDistance, affects: WidgetKind.distance)
+            }
         }
 
-        defaults.set(partnerLat, forKey: WidgetDefaultsKey.partnerLatitude)
-        defaults.set(partnerLon, forKey: WidgetDefaultsKey.partnerLongitude)
-        defaults.set(Date().timeIntervalSince1970, forKey: WidgetDefaultsKey.partnerLocationUpdatedAt)
+        writer.reload()
+    }
 
-        if let distance = doubleValue(from: userInfo["partner_distance"]) {
-            defaults.set(distance, forKey: WidgetDefaultsKey.partnerDistance)
-        } else if
-            let myLat = defaults.object(forKey: WidgetDefaultsKey.myLatitude) as? Double,
-            let myLon = defaults.object(forKey: WidgetDefaultsKey.myLongitude) as? Double
-        {
-            let myLocation = CLLocation(latitude: myLat, longitude: myLon)
-            let partnerLocation = CLLocation(latitude: partnerLat, longitude: partnerLon)
-            let distanceInMiles = myLocation.distance(from: partnerLocation) / 1609.344
-            defaults.set(distanceInMiles, forKey: WidgetDefaultsKey.partnerDistance)
-        }
+    /// Miles between our cached location and `coordinate`, when ours is known.
+    private static func distanceFromMyLocation(to coordinate: CLLocationCoordinate2D, in defaults: UserDefaults) -> Double? {
+        guard let myLat = defaults.object(forKey: WidgetDefaultsKey.myLatitude) as? Double,
+              let myLon = defaults.object(forKey: WidgetDefaultsKey.myLongitude) as? Double else { return nil }
+        return CLLocation(latitude: myLat, longitude: myLon)
+            .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) / 1609.344
+    }
 
-        return true
+    /// Parses Postgres `timestamptz` JSON (ISO 8601, with or without fractional seconds).
+    private static func parseServerDate(_ string: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: string) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: string)
     }
 
     /// Coerces push payload numbers that may arrive as NSNumber or String.

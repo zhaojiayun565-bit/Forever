@@ -22,10 +22,20 @@ enum AmbientDataError: LocalizedError {
 final class AmbientDataManager: NSObject, CLLocationManagerDelegate {
     static let shared = AmbientDataManager()
 
+    /// Uploads are skipped unless the user moved this far or this much time passed since the last one.
+    private static let uploadMinDistance: CLLocationDistance = 100
+    private static let uploadMinInterval: TimeInterval = 10 * 60
+
     private let locationManager = CLLocationManager()
     private var locationContinuation: CheckedContinuation<CLLocation, Error>?
+    private var lastUpload: (location: CLLocation, date: Date)?
 
     var authorizationStatus: CLAuthorizationStatus
+
+    /// Whether the app may read location (While Using or Always).
+    var isLocationAuthorized: Bool {
+        authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse
+    }
 
     override private init() {
         // Initialize status safely
@@ -33,6 +43,7 @@ final class AmbientDataManager: NSObject, CLLocationManagerDelegate {
         super.init()
         
         locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         self.authorizationStatus = locationManager.authorizationStatus
         
         // CRITICAL FIX: Removed `allowsBackgroundLocationUpdates` to prevent the Xcode Capability crash.
@@ -84,9 +95,7 @@ final class AmbientDataManager: NSObject, CLLocationManagerDelegate {
     /// Returns the user's coordinate for map centering, or a Bay Area fallback.
     func mapCenterCoordinate() async -> CLLocationCoordinate2D {
         let fallback = CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090)
-        guard authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse else {
-            return fallback
-        }
+        guard isLocationAuthorized else { return fallback }
         do {
             let location = try await fetchCurrentLocation()
             return location.coordinate
@@ -95,20 +104,32 @@ final class AmbientDataManager: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    func syncData() async throws {
-        let battery = fetchCurrentBatteryLevel()
+    /// Uploads the current location and battery, throttled to meaningful moves (or a periodic heartbeat).
+    /// - Parameter force: Bypass the throttle (e.g. right after permission is granted or pairing).
+    /// - Returns: Whether an upload happened.
+    @discardableResult
+    func syncData(force: Bool = false) async throws -> Bool {
+        guard isLocationAuthorized else { throw AmbientDataError.locationDenied }
 
-        guard authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse else {
-            throw AmbientDataError.locationDenied
-        }
-        
         let location = try await fetchCurrentLocation()
-        
+        if !force, let lastUpload,
+           location.distance(from: lastUpload.location) < Self.uploadMinDistance,
+           Date().timeIntervalSince(lastUpload.date) < Self.uploadMinInterval {
+            return false
+        }
+
         try await SupabaseManager.shared.updateAmbientData(
             latitude: location.coordinate.latitude,
             longitude: location.coordinate.longitude,
-            batteryLevel: battery
+            batteryLevel: fetchCurrentBatteryLevel()
         )
+        lastUpload = (location, Date())
+        return true
+    }
+
+    /// Forgets the last upload so the next sync always sends (e.g. after sign-in or pairing).
+    func resetUploadThrottle() {
+        lastUpload = nil
     }
 
     private func fetchCurrentLocation() async throws -> CLLocation {

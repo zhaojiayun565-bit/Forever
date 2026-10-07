@@ -85,6 +85,8 @@ struct Provider: TimelineProvider {
                 explicitLonKey: "myLongitude",
                 jsonKeys: ["myAmbientData", "currentUserAmbientData", "currentUser", "myProfile"]
             )
+            let partnerLocationUpdatedAt = (defaults?.object(forKey: "partnerLocationUpdatedAt") as? Double)
+                .map(Date.init(timeIntervalSince1970:))
             let partnerCoordinate = Self.coordinateFromAmbientData(
                 defaults: defaults,
                 explicitLatKey: "partnerLatitude",
@@ -137,10 +139,17 @@ struct Provider: TimelineProvider {
                 anniversaryDate: anniversaryDate,
                 myCoordinate: myCoordinate,
                 partnerCoordinate: partnerCoordinate,
-                mapSnapshot: mapSnapshot
+                mapSnapshot: mapSnapshot,
+                partnerLocationUpdatedAt: partnerLocationUpdatedAt
             )
-            let timeline = Timeline(entries: [entry], policy: .never)
-            completion(timeline)
+            // Extra entries only re-date the same data so the "Updated Xh ago" label stays accurate.
+            let ageEntries = SimpleEntry.ageLabelChangeDates(after: entry.date, updatedAt: partnerLocationUpdatedAt)
+                .map { date -> SimpleEntry in
+                    var aged = entry
+                    aged.date = date
+                    return aged
+                }
+            completion(Timeline(entries: [entry] + ageEntries, policy: .never))
         }
     }
 
@@ -364,7 +373,7 @@ struct DistanceLockScreenWidgetView: View {
                     .font(ForeverFont.header(size: 12, relativeTo: .caption))
             } else {
                 HStack(spacing: 4) {
-                    Text("DISTANCE")
+                    Text(entry.partnerLocationAge?.uppercased() ?? "DISTANCE")
                         .font(ForeverFont.bold(size: 10, relativeTo: .caption2))
                         .foregroundStyle(.secondary)
                     Text(distanceText)

@@ -6,7 +6,7 @@ import WidgetKit
 // MARK: - Timeline entry
 
 struct SimpleEntry: TimelineEntry {
-    let date: Date
+    var date: Date
     let distance: Double
     let noteImage: UIImage?
     let distanceUnit: String
@@ -21,6 +21,8 @@ struct SimpleEntry: TimelineEntry {
     let partnerCoordinate: CLLocationCoordinate2D?
     /// Pre-rendered map image produced by MKMapSnapshotter; nil when coordinates are unavailable.
     let mapSnapshot: UIImage?
+    /// When the partner last reported their location (server time).
+    var partnerLocationUpdatedAt: Date? = nil
 }
 
 extension SimpleEntry {
@@ -49,6 +51,26 @@ extension SimpleEntry {
     }
 
     static let togetherMessage = "We're together!"
+
+    /// Distances newer than this are shown without an age label.
+    static let freshLocationInterval: TimeInterval = 60 * 60
+
+    /// Age of the partner's location at this entry's date, e.g. "3h ago"; nil while still fresh.
+    var partnerLocationAge: String? {
+        guard hasDistanceData, let updatedAt = partnerLocationUpdatedAt else { return nil }
+        let age = date.timeIntervalSince(updatedAt)
+        guard age >= Self.freshLocationInterval else { return nil }
+        let hours = Int(age / 3600)
+        return hours < 24 ? "\(hours)h ago" : "\(hours / 24)d ago"
+    }
+
+    /// Future dates at which `partnerLocationAge` changes, so a single reload keeps the label accurate.
+    static func ageLabelChangeDates(after now: Date, updatedAt: Date?) -> [Date] {
+        guard let updatedAt else { return [] }
+        let hourly = (1..<24).map { updatedAt.addingTimeInterval(Double($0) * 3600) }
+        let daily = (1...7).map { updatedAt.addingTimeInterval(Double($0) * 86_400) }
+        return (hourly + daily).filter { $0 > now }
+    }
 }
 
 // MARK: - Distance Widget Components
@@ -169,13 +191,27 @@ struct DistanceWidgetView: View {
             .shadow(color: .black.opacity(0.12), radius: 4, x: 0, y: 2)
     }
 
+    /// "Updated 3h ago" under the distance once the partner's location is stale.
+    @ViewBuilder
+    private var freshnessLabel: some View {
+        if let age = entry.partnerLocationAge {
+            Text("Updated \(age)")
+                .font(ForeverFont.bold(size: 11, relativeTo: .caption2))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.45), radius: 2, x: 0, y: 1)
+        }
+    }
+
     private var smallLayout: some View {
         VStack(spacing: 10) {
             HStack(spacing: 20) {
                 MonogramAvatar(name: entry.myName, image: entry.myAvatarImage, size: 44)
                 MonogramAvatar(name: entry.partnerName, image: entry.partnerAvatarImage, size: 44)
             }
-            distancePill
+            VStack(spacing: 4) {
+                distancePill
+                freshnessLabel
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -199,8 +235,11 @@ struct DistanceWidgetView: View {
                     style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [6, 5])
                 )
 
-                distancePill
-                    .position(x: geo.size.width / 2, y: anchorY)
+                VStack(spacing: 4) {
+                    distancePill
+                    freshnessLabel
+                }
+                .position(x: geo.size.width / 2, y: anchorY + (entry.partnerLocationAge == nil ? 0 : 8))
 
                 VStack(spacing: 6) {
                     if let message = cleanedMyMessage {

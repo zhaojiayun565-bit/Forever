@@ -39,12 +39,19 @@ type ProfileRow = {
   id: string
   display_name?: string | null
   device_token?: string | null
+  apns_environment?: ApnsEnvironment | null
   latitude?: number | null
   longitude?: number | null
+  location_updated_at?: string | null
   latest_note_url?: string | null
   latest_message?: string | null
   drawing_started_at?: string | null
 }
+
+type ApnsEnvironment = "development" | "production"
+
+/** A device to push to; the environment picks the APNs host its token was issued for. */
+type PushTarget = { userId: string; token: string; environment: ApnsEnvironment | null }
 
 type DirectPushPayload = {
   mode: "direct"
@@ -56,10 +63,12 @@ type DirectPushPayload = {
   question_id?: string
 }
 
+/** True when the user moved, or re-reported their location (heartbeat that refreshes "updated" time). */
 function locationChanged(record: Record<string, unknown>, oldRecord: Record<string, unknown>): boolean {
   const lat = record.latitude as number | null | undefined
   const lon = record.longitude as number | null | undefined
   if (lat == null || lon == null) return false
+  if (record.location_updated_at != null && record.location_updated_at !== oldRecord.location_updated_at) return true
   const oldLat = oldRecord.latitude as number | null | undefined
   const oldLon = oldRecord.longitude as number | null | undefined
   if (oldLat == null || oldLon == null) return true
@@ -101,15 +110,21 @@ async function getApnsJwt(): Promise<string> {
   return token
 }
 
+/** Sandbox for Xcode-installed builds, production for TestFlight / App Store; env var covers legacy tokens. */
+function apnsHost(environment: ApnsEnvironment | null): string {
+  if (environment === "development") return "api.sandbox.push.apple.com"
+  if (environment === "production") return "api.push.apple.com"
+  return Deno.env.get("APPLE_APNS_HOST") ?? "api.sandbox.push.apple.com"
+}
+
 async function sendApns(
-  deviceToken: string,
+  target: PushTarget,
   pushBody: Record<string, unknown>,
   pushType: "alert" | "background"
 ): Promise<Response> {
   const bundleId = Deno.env.get("APPLE_BUNDLE_ID")!
-  const apnsHost = Deno.env.get("APPLE_APNS_HOST") ?? "api.sandbox.push.apple.com"
   const jwt = await getApnsJwt()
-  const pushResponse = await fetch(`https://${apnsHost}/3/device/${deviceToken}`, {
+  const pushResponse = await fetch(`https://${apnsHost(target.environment)}/3/device/${target.token}`, {
     method: "POST",
     headers: {
       authorization: `bearer ${jwt}`,
@@ -122,15 +137,22 @@ async function sendApns(
   if (!pushResponse.ok) {
     const errText = await pushResponse.text()
     console.error("APNs Error:", errText)
+    if (pushResponse.status === 410 || errText.includes("BadDeviceToken")) {
+      // Token is dead (app deleted) or belongs to the other APNs environment; stop pushing to it.
+      await supabase.from("profiles")
+        .update({ device_token: null, apns_environment: null })
+        .eq("id", target.userId).eq("device_token", target.token)
+    }
     return new Response(`APNs error: ${errText}`, { status: 500 })
   }
   return new Response(JSON.stringify({ success: true }), { status: 200 })
 }
 
-async function fetchDeviceToken(userId: string): Promise<string | null> {
-  const { data, error } = await supabase.from("profiles").select("device_token").eq("id", userId).single()
+async function fetchPushTarget(userId: string): Promise<PushTarget | null> {
+  const { data, error } = await supabase.from("profiles")
+    .select("device_token, apns_environment").eq("id", userId).single()
   if (error || !data?.device_token) return null
-  return data.device_token
+  return { userId, token: data.device_token, environment: data.apns_environment ?? null }
 }
 
 async function sendAlertToRecipient(
@@ -138,8 +160,8 @@ async function sendAlertToRecipient(
   event: AlertPushEvent,
   extras: Record<string, unknown> = {}
 ): Promise<Response> {
-  const deviceToken = await fetchDeviceToken(recipientId)
-  if (!deviceToken) return new Response("No device token.", { status: 200 })
+  const target = await fetchPushTarget(recipientId)
+  if (!target) return new Response("No device token.", { status: 200 })
   const pushBody: Record<string, unknown> = {
     aps: { alert: { title: event.title, body: event.body }, sound: "default", "content-available": 1 },
     type: event.type,
@@ -147,7 +169,7 @@ async function sendAlertToRecipient(
     ...extras,
   }
   if (event.questionId) pushBody.question_id = event.questionId
-  return await sendApns(deviceToken, pushBody, "alert")
+  return await sendApns(target, pushBody, "alert")
 }
 
 async function handleProfilesWebhook(record: ProfileRow, oldRecord: Record<string, unknown>): Promise<Response> {
@@ -170,24 +192,26 @@ async function handleProfilesWebhook(record: ProfileRow, oldRecord: Record<strin
 
   const partnerId = couple.user1_id === record.id ? couple.user2_id : couple.user1_id
   const { data: partner, error: partnerError } = await supabase
-    .from("profiles").select("device_token, latitude, longitude").eq("id", partnerId).single()
+    .from("profiles").select("device_token, apns_environment, latitude, longitude").eq("id", partnerId).single()
   if (partnerError || !partner?.device_token) return new Response("No device token.", { status: 200 })
+  const target: PushTarget = { userId: partnerId, token: partner.device_token, environment: partner.apns_environment ?? null }
 
   if (event.type === "location") {
     let partnerDistance: number | null = null
     if (partner.latitude != null && partner.longitude != null && record.latitude != null && record.longitude != null) {
       partnerDistance = distanceMiles(partner.latitude, partner.longitude, record.latitude, record.longitude)
     }
-    return await sendApns(partner.device_token, {
+    return await sendApns(target, {
       aps: { "content-available": 1 },
       type: "location",
       partner_latitude: record.latitude,
       partner_longitude: record.longitude,
       partner_distance: partnerDistance,
+      partner_location_updated_at: record.location_updated_at ?? null,
     }, "background")
   }
 
-  return await sendApns(partner.device_token, {
+  return await sendApns(target, {
     aps: { alert: { title: event.title, body: event.body }, sound: "default", "content-available": 1 },
     type: event.type,
     route: event.route,

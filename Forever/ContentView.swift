@@ -14,6 +14,9 @@ struct ContentView: View {
     @State private var showDrawingBoard = false
     @State private var showSplash = true
     @State private var selectedTab: AppTab = .home
+    @AppStorage("hasSeenLocationPrompt") private var hasSeenLocationPrompt = false
+    @State private var showLocationPrompt = false
+    private let ambientData = AmbientDataManager.shared
 
     var body: some View {
         ZStack {
@@ -33,14 +36,32 @@ struct ContentView: View {
         .task {
             await state.initializeApp()
             await registerForPushIfAuthorized()
+            updateLocationPrompt()
         }
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active && state.currentCouple != nil {
-                Task {
-                    await state.syncAndRefreshWidgets()
-                    await state.loadMemories()
+            guard newPhase == .active else { return }
+            Task { await state.refreshOnForeground() }
+        }
+        .onChange(of: state.currentCouple?.id) { _, _ in
+            updateLocationPrompt()
+        }
+        .onChange(of: ambientData.authorizationStatus) { _, _ in
+            guard ambientData.isLocationAuthorized else { return }
+            Task { await state.syncLocationNow() }
+        }
+        .sheet(isPresented: $showLocationPrompt) {
+            LocationPermissionPromptView(
+                partnerName: state.partnerDisplayName,
+                onAllow: {
+                    hasSeenLocationPrompt = true
+                    showLocationPrompt = false
+                    ambientData.requestLocationAuthorizationFirst()
+                },
+                onNotNow: {
+                    hasSeenLocationPrompt = true
+                    showLocationPrompt = false
                 }
-            }
+            )
         }
         .fullScreenCover(isPresented: $showDrawingBoard) {
             LockscreenDrawingBoardView()
@@ -98,6 +119,14 @@ struct ContentView: View {
             }
             .tint(.pink)
         }
+    }
+
+    /// Asks for location once, right after pairing, when the user hasn't decided yet.
+    private func updateLocationPrompt() {
+        showLocationPrompt = hasCompletedOnboarding
+            && state.currentCouple != nil
+            && ambientData.authorizationStatus == .notDetermined
+            && !hasSeenLocationPrompt
     }
 
     /// Re-registers for remote notifications on launch when the user granted full or provisional permission.

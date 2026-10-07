@@ -5,8 +5,7 @@ enum RevenueCatConfiguration {
     #if DEBUG
     static let apiKey = "test_iMcbsmPOPsVwrQhfcISOcZZfJDu"
     #else
-  // Replace with your production public API key before App Store release.
-    static let apiKey = "test_iMcbsmPOPsVwrQhfcISOcZZfJDu"
+    static let apiKey = "appl_DmZJXShuDnZMgjpNzpNsxpzgdPi"
     #endif
 
     /// Entitlement identifier in RevenueCat; must match `REVENUECAT_ENTITLEMENT_ID` on the revenuecat-sync function.

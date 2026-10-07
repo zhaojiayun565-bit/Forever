@@ -1,9 +1,10 @@
 import SwiftUI
 import UIKit
 
-/// Gill Sans typography used across the Forever app and widget.
+/// Gill Sans typography used across the Forever app and widget. Uses the copy that ships with iOS;
+/// the font is licensed to Apple, so it must not be bundled.
 enum ForeverFont {
-    static let semiboldName = "GillSans-Medium"
+    static let semiboldName = "GillSans-SemiBold"
     static let regularName = "GillSans"
 
     static func header(_ style: Font.TextStyle) -> Font {

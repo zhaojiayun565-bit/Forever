@@ -168,6 +168,10 @@ final class AppStateManager {
                 .value
 
             self.partnerProfile = partner
+            // The server keeps both anniversaries equal, so a partner edit also changed ours.
+            if let anniversary = partner.anniversaryDate, anniversary != currentUser?.anniversaryDate {
+                currentUser?.anniversaryDate = anniversary
+            }
             self.updateWidgetData(partner: partner)
             await syncAvatarImagesToAppGroup()
         } catch {

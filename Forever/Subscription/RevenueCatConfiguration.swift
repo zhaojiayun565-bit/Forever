@@ -15,7 +15,7 @@ enum RevenueCatConfiguration {
     /// App Store product identifiers.
     enum ProductID {
         static let monthly = "monthly"
-        static let yearly = "yearly"
+        static let yearly = "yearly_4999"
         static let lifetime = "lifetime"
     }
 

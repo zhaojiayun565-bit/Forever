@@ -56,7 +56,7 @@ enum PaywallPricingFormatter {
         return formatter
     }()
 
-    /// Subtext under the CTA, e.g. "then just $49.99 per year ($0.96/week)" during a trial.
+    /// Subtext under the CTA, e.g. "then just $49.99 per year ($1.04/week)" during a trial.
     static func priceSubtitle(for package: Package, trial: PaywallTrial?) -> String {
         let product = package.storeProduct
         let priceText = product.localizedPriceString
@@ -66,20 +66,21 @@ enum PaywallPricingFormatter {
         }
 
         var billed = "\(priceText) per \(unitName(period.unit))"
-        if period.unit == .year, let weekly = formatCurrency(product.price / 52, currencyCode: product.currencyCode) {
+        // Weekly figure is the per-month price ÷ 4 (12 × 4 = 48 weeks), matching the plan card's /mo math.
+        if period.unit == .year, let weekly = formatCurrency(product.price / 48, currencyCode: product.currencyCode) {
             billed += " (\(weekly)/week)"
         }
         return trial == nil ? "\(billed). Renews automatically, cancel anytime." : "then just \(billed)"
     }
 
-    /// Billed amount for plan cards, e.g. "$79.99/yr" (the most prominent price, per App Review 3.1.2).
+    /// Billed amount for plan cards, e.g. "$49.99/yr" (the most prominent price, per App Review 3.1.2).
     static func planCardPriceLabel(for package: Package) -> String {
         let product = package.storeProduct
         guard let period = product.subscriptionPeriod else { return product.localizedPriceString }
         return "\(product.localizedPriceString)/\(shortUnitName(period.unit))"
     }
 
-    /// Secondary monthly equivalent for yearly cards, e.g. "$6.67/mo".
+    /// Secondary monthly equivalent for yearly cards, e.g. "$4.17/mo".
     static func planCardSecondaryLabel(for package: Package) -> String? {
         let product = package.storeProduct
         guard product.subscriptionPeriod?.unit == .year,

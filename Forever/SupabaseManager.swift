@@ -18,11 +18,27 @@ nonisolated enum DB {
 nonisolated enum PairingError: LocalizedError {
     case emptyCode
     case partnerNotFound
+    case alreadyPaired
+    case partnerAlreadyPaired
+    case tooManyAttempts
+
+    /// Maps errors raised by the `pair_with_code` RPC.
+    init?(serverMessage: String) {
+        switch serverMessage {
+        case "already_paired": self = .alreadyPaired
+        case "partner_already_paired": self = .partnerAlreadyPaired
+        case "too_many_attempts": self = .tooManyAttempts
+        default: return nil
+        }
+    }
 
     var errorDescription: String? {
         switch self {
         case .emptyCode: "Enter a pairing code."
         case .partnerNotFound: "No partner found with that code."
+        case .alreadyPaired: "You're already paired. Unpair in Settings first."
+        case .partnerAlreadyPaired: "That person is already paired with someone else."
+        case .tooManyAttempts: "Too many incorrect codes. Try again in an hour."
         }
     }
 }

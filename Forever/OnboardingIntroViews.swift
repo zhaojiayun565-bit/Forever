@@ -141,10 +141,9 @@ struct IntroNameInputView: View {
             IntroPrimaryButton(title: "Continue", isEnabled: !name.isEmpty, action: action)
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
         }
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                isFocused = true
-            }
+        .task {
+            try? await Task.sleep(for: .milliseconds(500))
+            isFocused = true
         }
     }
 }

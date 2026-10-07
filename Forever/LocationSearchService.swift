@@ -1,6 +1,7 @@
 import Foundation
 import MapKit
 import Observation
+import os
 
 /// Wraps `MKLocalSearchCompleter` for place autocomplete.
 @Observable
@@ -35,7 +36,7 @@ class LocationSearchService: NSObject, MKLocalSearchCompleterDelegate {
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
         DispatchQueue.main.async {
             self.completions = []
-            print("🚨 Location search failed: \(error.localizedDescription)")
+            Log.location.error("Location search failed: \(error.localizedDescription)")
         }
     }
 }

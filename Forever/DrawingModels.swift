@@ -8,7 +8,7 @@ import SwiftUI
 /// canvas width (a single uniform scale factor), so shapes keep their true geometry
 /// across devices with different aspect ratios. `width` is likewise stored as a
 /// fraction of canvas width so stroke thickness stays visually proportional.
-struct DrawStroke: Identifiable, Equatable, Sendable {
+nonisolated struct DrawStroke: Identifiable, Equatable, Sendable {
     let id: UUID
     let authorId: UUID
     var colorHex: String
@@ -20,7 +20,7 @@ struct DrawStroke: Identifiable, Equatable, Sendable {
 
 /// Lightweight incremental broadcast payload. Carries only the NEW points since the
 /// last chunk to keep WebSocket messages tiny. Points are flattened `[x0, y0, x1, y1, ...]`.
-struct StrokeChunkPayload: Codable, Sendable {
+nonisolated struct StrokeChunkPayload: Codable, Sendable {
     let strokeId: UUID
     let authorId: UUID
     let colorHex: String
@@ -30,14 +30,14 @@ struct StrokeChunkPayload: Codable, Sendable {
 }
 
 /// Payload for `undo` / `clear` control events.
-struct BoardControlPayload: Codable, Sendable {
+nonisolated struct BoardControlPayload: Codable, Sendable {
     let authorId: UUID
     /// The stroke to remove for `undo`; `nil` for `clear`.
     let strokeId: UUID?
 }
 
 /// Payload for a shared board wallpaper change.
-struct WallpaperPayload: Codable, Sendable {
+nonisolated struct WallpaperPayload: Codable, Sendable {
     let authorId: UUID
     let url: String
 }
@@ -53,7 +53,7 @@ enum BoardEvent {
 // MARK: - Supabase DTOs
 
 /// Insert payload for the `drawing_strokes` table.
-struct DrawingStrokeInsert: Encodable, Sendable {
+nonisolated struct DrawingStrokeInsert: Encodable, Sendable {
     let id: UUID
     let couple_id: UUID
     let author_id: UUID
@@ -74,7 +74,7 @@ struct DrawingStrokeInsert: Encodable, Sendable {
 }
 
 /// Row decoded from the `drawing_strokes` table.
-struct DrawingStrokeRow: Decodable, Sendable {
+nonisolated struct DrawingStrokeRow: Decodable, Sendable {
     let id: UUID
     let author_id: UUID
     let color_hex: String
@@ -95,7 +95,7 @@ struct DrawingStrokeRow: Decodable, Sendable {
 
 // MARK: - Point Packing Helpers
 
-extension Array where Element == CGPoint {
+nonisolated extension Array where Element == CGPoint {
     /// Flattens points into `[x0, y0, x1, y1, ...]` for compact realtime broadcast.
     var flattened: [Double] {
         flatMap { [Double($0.x), Double($0.y)] }
@@ -107,7 +107,7 @@ extension Array where Element == CGPoint {
     }
 }
 
-extension Array where Element == Double {
+nonisolated extension Array where Element == Double {
     /// Rebuilds `[CGPoint]` from a flattened `[x0, y0, x1, y1, ...]` array (broadcast path).
     func toCGPoints() -> [CGPoint] {
         guard count >= 2 else { return [] }
@@ -117,7 +117,7 @@ extension Array where Element == Double {
     }
 }
 
-extension Array where Element == [Double] {
+nonisolated extension Array where Element == [Double] {
     /// Rebuilds `[CGPoint]` from `[[x, y], ...]`, skipping malformed pairs (JSONB path).
     func toCGPoints() -> [CGPoint] {
         compactMap { $0.count == 2 ? CGPoint(x: $0[0], y: $0[1]) : nil }
@@ -128,7 +128,7 @@ extension Array where Element == [Double] {
 
 extension Color {
     /// Builds a color from a `#RRGGBB` hex string (falls back to white on parse failure).
-    init(hexString: String) {
+    nonisolated init(hexString: String) {
         var hex = hexString
         if hex.hasPrefix("#") { hex.removeFirst() }
         var value: UInt64 = 0

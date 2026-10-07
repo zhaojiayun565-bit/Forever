@@ -11,9 +11,9 @@ extension AppStateManager {
     /// Listens for the partner entering our code while we're unpaired.
     func startCoupleLinkListener() {
         guard let topic = coupleLinkTopic else { return }
-        realtime.start(topic) { channel in
+        realtime.start(topic) { [weak self] channel in
             let inserts = channel.postgresChange(InsertAction.self, schema: "public", table: "couples")
-            return { [weak self] in
+            return {
                 for await _ in inserts {
                     guard let self, let couple = try? await self.supabase.fetchCurrentCouple() else { continue }
                     // didPair stops this listener, so run it outside the listener task.
@@ -30,11 +30,11 @@ extension AppStateManager {
         if let coupleLinkTopic { realtime.stop(coupleLinkTopic) }
         let partnerId = couple.user1Id == myId ? couple.user2Id : couple.user1Id
 
-        realtime.start("partner-profile-\(partnerId)") { channel in
+        realtime.start("partner-profile-\(partnerId)") { [weak self] channel in
             let updates = channel.postgresChange(
-                UpdateAction.self, schema: "public", table: "profiles", filter: "id=eq.\(partnerId)"
+                UpdateAction.self, schema: "public", table: "profiles", filter: .eq("id", value: partnerId)
             )
-            return { [weak self] in
+            return {
                 for await _ in updates {
                     guard let self else { return }
                     await self.loadPartnerProfile()
@@ -43,24 +43,25 @@ extension AppStateManager {
             }
         }
 
-        realtime.start("couple-memories-\(couple.id)") { channel in
-            let filter = "couple_id=eq.\(couple.id)"
+        realtime.start("couple-memories-\(couple.id)") { [weak self] channel in
+            let filter = RealtimePostgresFilter.eq("couple_id", value: couple.id)
             let inserts = channel.postgresChange(InsertAction.self, schema: "public", table: "memories", filter: filter)
             let updates = channel.postgresChange(UpdateAction.self, schema: "public", table: "memories", filter: filter)
             let deletes = channel.postgresChange(DeleteAction.self, schema: "public", table: "memories", filter: filter)
-            return { [weak self] in
+            let reload: @MainActor @Sendable () async -> Void = { [weak self] in await self?.loadMemories() }
+            return {
                 await withTaskGroup(of: Void.self) { group in
-                    group.addTask { for await _ in inserts { await self?.loadMemories() } }
-                    group.addTask { for await _ in updates { await self?.loadMemories() } }
-                    group.addTask { for await _ in deletes { await self?.loadMemories() } }
+                    group.addTask { for await _ in inserts { await reload() } }
+                    group.addTask { for await _ in updates { await reload() } }
+                    group.addTask { for await _ in deletes { await reload() } }
                 }
             }
         }
 
         // Delete events can't be filtered server-side; match the couple id client-side.
-        realtime.start("couple-status-\(couple.id)") { channel in
+        realtime.start("couple-status-\(couple.id)") { [weak self] channel in
             let deletes = channel.postgresChange(DeleteAction.self, schema: "public", table: "couples")
-            return { [weak self] in
+            return {
                 for await action in deletes {
                     guard let self,
                           let id = action.oldRecord["id"]?.stringValue.flatMap(UUID.init(uuidString:)),

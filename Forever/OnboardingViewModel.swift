@@ -192,9 +192,9 @@ final class OnboardingViewModel {
     // MARK: First memory
 
     /// Stages the first memory on disk so it survives until sign-in, and keeps a preview for the next steps.
-    func stageMemory(image: UIImage, note: String, coordinate: CLLocationCoordinate2D, appState: AppStateManager) {
+    func stageMemory(image: UIImage, note: String, coordinate: CLLocationCoordinate2D, appState: AppStateManager) async {
         do {
-            try appState.stageOnboardingMemory(image: image, note: note, coordinate: coordinate)
+            try await appState.stageOnboardingMemory(image: image, note: note, coordinate: coordinate)
             memoryPreview = OnboardingMemoryPreview(image: image, note: note, coordinate: coordinate)
             showAddMemory = false
         } catch {

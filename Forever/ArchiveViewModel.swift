@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 /// Loads and holds shared drawing archive entries for the Archive tab.
 @MainActor
@@ -25,7 +26,7 @@ final class ArchiveViewModel {
         do {
             drawings = try await supabase.fetchArchivedDrawings(coupleId: coupleId)
         } catch {
-            print("🚨 Failed to load archive: \(error)")
+            Log.data.error("Failed to load archive: \(String(describing: error))")
         }
     }
 }

@@ -4,7 +4,7 @@ import Foundation
 // MARK: - Profile Model
 
 /// Row in `profiles`; `CodingKeys` match Supabase snake_case (works with or without `convertFromSnakeCase`).
-struct Profile: Codable, Identifiable, Hashable {
+nonisolated struct Profile: Codable, Identifiable, Hashable {
     let id: UUID
     var pairingCode: String?
     var latitude: Double?
@@ -50,6 +50,14 @@ struct Profile: Codable, Identifiable, Hashable {
         return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 
+    /// Applies a location upload the server just accepted.
+    mutating func apply(_ upload: LocationUpload) {
+        latitude = upload.coordinate.latitude
+        longitude = upload.coordinate.longitude
+        batteryLevel = upload.batteryLevel
+        locationUpdatedAt = upload.updatedAt
+    }
+
     /// Whether this profile row represents an active premium subscription.
     var isPremiumActive: Bool {
         guard isPremium == true else { return false }
@@ -61,7 +69,7 @@ struct Profile: Codable, Identifiable, Hashable {
 // MARK: - Couple Model
 
 /// Row in `couples`.
-struct Couple: Codable, Identifiable, Hashable {
+nonisolated struct Couple: Codable, Identifiable, Hashable {
     let id: UUID
     let user1Id: UUID
     let user2Id: UUID
@@ -107,7 +115,7 @@ struct Couple: Codable, Identifiable, Hashable {
 
 // MARK: - Memory Model
 
-struct CoupleMemory: Identifiable, Equatable, Hashable {
+nonisolated struct CoupleMemory: Identifiable, Equatable, Hashable {
     let id: UUID
     /// `nil` for memories saved in Solo Mode before pairing.
     let coupleId: UUID?
@@ -126,7 +134,7 @@ struct CoupleMemory: Identifiable, Equatable, Hashable {
 // MARK: - Questions
 
 /// Row in `question_categories`.
-struct QuestionCategory: Codable, Identifiable, Hashable {
+nonisolated struct QuestionCategory: Codable, Identifiable, Hashable {
     let id: UUID
     let title: String
     let description: String?
@@ -145,7 +153,7 @@ struct QuestionCategory: Codable, Identifiable, Hashable {
 }
 
 /// Row in `questions`.
-struct Question: Codable, Identifiable, Hashable {
+nonisolated struct Question: Codable, Identifiable, Hashable {
     let id: UUID
     let categoryId: UUID
     let questionText: String
@@ -160,7 +168,7 @@ struct Question: Codable, Identifiable, Hashable {
 }
 
 /// Row in `couple_answers`; partner_a maps to user1, partner_b to user2.
-struct CoupleAnswer: Codable, Identifiable, Hashable {
+nonisolated struct CoupleAnswer: Codable, Identifiable, Hashable {
     let id: UUID
     let coupleId: UUID
     let questionId: UUID
@@ -222,7 +230,7 @@ struct CoupleAnswer: Codable, Identifiable, Hashable {
 // MARK: - Archived Drawing
 
 /// A sent drawing-board snapshot stored in the shared archive.
-struct ArchivedDrawing: Identifiable, Equatable, Hashable {
+nonisolated struct ArchivedDrawing: Identifiable, Equatable, Hashable {
     let id: UUID
     let authorId: UUID
     let imageUrl: URL

@@ -201,14 +201,13 @@ struct EditMemoryView: View {
             if !newSelectedImages.isEmpty {
                 let uploadedUrls = try await withThrowingTaskGroup(of: URL.self) { group in
                     for image in newSelectedImages {
-                        if let data = image.jpegData(compressionQuality: 0.7) {
-                            group.addTask {
-                                try await SupabaseManager.shared.uploadMemoryImage(
-                                    data: data,
-                                    coupleId: coupleIdForMemory,
-                                    creatorId: creatorId
-                                )
-                            }
+                        group.addTask {
+                            let data = try await ImageEncoding.jpeg(image, quality: 0.7)
+                            return try await SupabaseManager.shared.uploadMemoryImage(
+                                data: data,
+                                coupleId: coupleIdForMemory,
+                                creatorId: creatorId
+                            )
                         }
                     }
                     var urls: [URL] = []

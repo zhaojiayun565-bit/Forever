@@ -2,12 +2,13 @@ import SwiftUI
 import UIKit
 
 /// Rasterizes width-normalized drawing strokes for the partner widget and shared archive.
-enum BoardSnapshotRenderer {
+nonisolated enum BoardSnapshotRenderer {
     private static let renderWidth: CGFloat = 1024
 
     /// Centered-square flatten (wallpaper + strokes) matching the board's center area, for the
     /// Partner Note widget. Strokes may be empty to send a background-only image.
-    static func widgetSquare(strokes: [DrawStroke], wallpaper: UIImage?, boardSize: CGSize) -> Data? {
+    @concurrent
+    static func widgetSquare(strokes: [DrawStroke], wallpaper: UIImage?, boardSize: CGSize) async -> Data? {
         guard boardSize.width > 0, boardSize.height > 0 else { return nil }
 
         let side = renderWidth
@@ -35,7 +36,8 @@ enum BoardSnapshotRenderer {
     }
 
     /// Full-board capture with wallpaper (or gradient fallback) for the shared archive.
-    static func archiveJPEG(strokes: [DrawStroke], wallpaper: UIImage?, boardSize: CGSize) -> Data? {
+    @concurrent
+    static func archiveJPEG(strokes: [DrawStroke], wallpaper: UIImage?, boardSize: CGSize) async -> Data? {
         guard !strokes.isEmpty, boardSize.width > 0, boardSize.height > 0 else { return nil }
 
         let aspect = boardSize.height / boardSize.width

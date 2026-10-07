@@ -203,7 +203,7 @@ struct OnboardingView: View {
                 showAddMemory: bindable.showAddMemory,
                 localMemory: viewModel.memoryPreview,
                 onMemoryStaged: { image, note, coordinate in
-                    viewModel.stageMemory(image: image, note: note, coordinate: coordinate, appState: state)
+                    Task { await viewModel.stageMemory(image: image, note: note, coordinate: coordinate, appState: state) }
                 },
                 onContinue: viewModel.advance
             )

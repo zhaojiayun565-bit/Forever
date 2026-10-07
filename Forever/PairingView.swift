@@ -16,6 +16,7 @@ struct PairingView: View {
 
     @State private var partnerCode = ""
     @State private var isCopied = false
+    @State private var copyResetTask: Task<Void, Never>?
     @State private var errorMessage: String?
     @State private var isLinking = false
     @State private var isSkipping = false
@@ -219,7 +220,9 @@ struct PairingView: View {
             isCopied = true
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+        copyResetTask?.cancel()
+        copyResetTask = Task {
+            guard (try? await Task.sleep(for: .seconds(2))) != nil else { return }
             withAnimation(.easeInOut(duration: 0.2)) {
                 isCopied = false
             }

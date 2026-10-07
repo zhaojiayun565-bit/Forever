@@ -1,5 +1,6 @@
 import AuthenticationServices
 import SwiftUI
+import os
 
 /// Sign-in screen for returning users who already finished onboarding (e.g. after signing out).
 struct LoginView: View {
@@ -42,7 +43,7 @@ struct LoginView: View {
                             await state.initializeApp()
                         } catch {
                             debugErrorMessage = "Anonymous test login failed. Please try again."
-                            print("Anonymous Sign In Error: \(error)")
+                            Log.auth.error("Anonymous Sign In Error: \(String(describing: error))")
                         }
                     }
                 } label: {

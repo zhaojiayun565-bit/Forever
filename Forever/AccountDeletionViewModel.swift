@@ -1,6 +1,7 @@
 import AuthenticationServices
 import Foundation
 import Observation
+import os
 
 /// Drives the Delete Account flow: confirmation, Apple re-auth, server deletion, local reset.
 @MainActor
@@ -39,7 +40,7 @@ final class AccountDeletionViewModel {
             return
         } catch {
             errorMessage = "We couldn't delete your account. Please check your connection and try again."
-            print("🚨 Account deletion failed: \(error)")
+            Log.auth.error("Account deletion failed: \(String(describing: error))")
         }
     }
 }

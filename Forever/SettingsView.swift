@@ -52,10 +52,10 @@ struct SettingsView: View {
     }
 
     private func syncDistanceUnitToWidgetDefaults() {
-        guard let defaults = UserDefaults(suiteName: "group.com.jiayunzhao.Forever") else { return }
+        guard let defaults = AppGroup.defaults else { return }
         let unit = normalizedDistanceUnit
-        if defaults.string(forKey: "distanceUnit") != unit {
-            defaults.set(unit, forKey: "distanceUnit")
+        if defaults.string(forKey: WidgetDefaultsKey.distanceUnit) != unit {
+            defaults.set(unit, forKey: WidgetDefaultsKey.distanceUnit)
             WidgetCenter.shared.reloadAllTimelines()
         }
     }

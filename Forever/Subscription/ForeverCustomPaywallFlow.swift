@@ -40,10 +40,6 @@ enum PaywallTheme {
         scheme == .dark ? darkSecondary : Color.black.opacity(0.55)
     }
 
-    static func mediaPlaceholder(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.75)
-    }
-
     static func footerLink(for scheme: ColorScheme) -> Color {
         scheme == .dark ? darkFooterLink : Color.black.opacity(0.35)
     }
@@ -83,8 +79,6 @@ private enum PaywallStep3Metrics {
     static let subheadToHeadline: CGFloat = 12
     static let headlineToTimeline: CGFloat = 48
     static let timelineToPlans: CGFloat = 32
-    static let plansToTrust: CGFloat = 10
-    static let footerSpacing: CGFloat = 16
 
     static let subheadSize: CGFloat = 17
     static let headlineSize: CGFloat = 30
@@ -95,7 +89,6 @@ private enum PaywallStep3Metrics {
     static let badgeSize: CGFloat = 11
     static let ctaSize: CGFloat = 17
     static let ctaSubtextSize: CGFloat = 14
-    static let trustLabelSize: CGFloat = 17
 
     static let timelineCircleSize: CGFloat = 40
     static let timelineConnectorWidth: CGFloat = 9

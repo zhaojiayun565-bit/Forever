@@ -1,10 +1,10 @@
-import WidgetKit
-import SwiftUI
 import MapKit
+import SwiftUI
+import WidgetKit
+import os
 
 // MARK: - Provider & Entry (Shared by both widgets)
 struct Provider: TimelineProvider {
-    private static let appGroupSuiteName = "group.com.jiayunzhao.Forever"
 
     private static let fallbackPreviewAnniversaryDate = Calendar.current.date(
         byAdding: .day, value: -825, to: Date()
@@ -16,12 +16,12 @@ struct Provider: TimelineProvider {
     }
 
     private static func anniversaryDate(from defaults: UserDefaults?) -> Date? {
-        guard let timestamp = defaults?.object(forKey: "anniversaryDate") as? Double else { return nil }
+        guard let timestamp = defaults?.object(forKey: WidgetDefaultsKey.anniversaryDate) as? Double else { return nil }
         return Date(timeIntervalSince1970: timestamp)
     }
 
     func placeholder(in context: Context) -> SimpleEntry {
-        let defaults = UserDefaults(suiteName: Self.appGroupSuiteName)
+        let defaults = AppGroup.defaults
         return SimpleEntry(
             date: Date(),
             distance: 1234.0,
@@ -41,7 +41,7 @@ struct Provider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
-        let defaults = UserDefaults(suiteName: Self.appGroupSuiteName)
+        let defaults = AppGroup.defaults
         let myCoord = CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090)
         let partnerCoord = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
         Task {
@@ -71,37 +71,31 @@ struct Provider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
         Task {
-            let defaults = UserDefaults(suiteName: Self.appGroupSuiteName)
-            let distance = defaults?.double(forKey: "partnerDistance") ?? 0.0
-            let distanceUnit = defaults?.string(forKey: "distanceUnit") ?? "mi"
-            let myName = defaults?.string(forKey: "myName") ?? "Me"
-            let partnerName = defaults?.string(forKey: "partnerName") ?? "P"
-            let myMessage = defaults?.string(forKey: "myMessage")
-            let partnerMessage = defaults?.string(forKey: "partnerMessage")
+            let defaults = AppGroup.defaults
+            let distance = defaults?.double(forKey: WidgetDefaultsKey.partnerDistance) ?? 0.0
+            let distanceUnit = defaults?.string(forKey: WidgetDefaultsKey.distanceUnit) ?? "mi"
+            let myName = defaults?.string(forKey: WidgetDefaultsKey.myName) ?? "Me"
+            let partnerName = defaults?.string(forKey: WidgetDefaultsKey.partnerName) ?? "P"
+            let myMessage = defaults?.string(forKey: WidgetDefaultsKey.myMessage)
+            let partnerMessage = defaults?.string(forKey: WidgetDefaultsKey.partnerMessage)
             let anniversaryDate = Self.anniversaryDate(from: defaults)
-            let myCoordinate = Self.coordinateFromAmbientData(
-                defaults: defaults,
-                explicitLatKey: "myLatitude",
-                explicitLonKey: "myLongitude",
-                jsonKeys: ["myAmbientData", "currentUserAmbientData", "currentUser", "myProfile"]
+            let myCoordinate = Self.coordinate(
+                in: defaults, latKey: WidgetDefaultsKey.myLatitude, lonKey: WidgetDefaultsKey.myLongitude
             )
-            let partnerLocationUpdatedAt = (defaults?.object(forKey: "partnerLocationUpdatedAt") as? Double)
+            let partnerLocationUpdatedAt = (defaults?.object(forKey: WidgetDefaultsKey.partnerLocationUpdatedAt) as? Double)
                 .map(Date.init(timeIntervalSince1970:))
-            let partnerCoordinate = Self.coordinateFromAmbientData(
-                defaults: defaults,
-                explicitLatKey: "partnerLatitude",
-                explicitLonKey: "partnerLongitude",
-                jsonKeys: ["partnerAmbientData", "partnerProfileAmbientData", "partnerProfile"]
+            let partnerCoordinate = Self.coordinate(
+                in: defaults, latKey: WidgetDefaultsKey.partnerLatitude, lonKey: WidgetDefaultsKey.partnerLongitude
             )
 
             var downloadedImage: UIImage? = nil
-            if let urlString = defaults?.string(forKey: "partnerNoteUrl"),
+            if let urlString = defaults?.string(forKey: WidgetDefaultsKey.partnerNoteUrl),
                let url = URL(string: urlString) {
                 do {
                     let (data, _) = try await URLSession.shared.data(from: url)
                     downloadedImage = UIImage(data: data)
                 } catch {
-                    print("🚨 Widget Image Download Failed: \(error)")
+                    Log.widget.error("Note image download failed: \(String(describing: error))")
                 }
             }
 
@@ -116,13 +110,13 @@ struct Provider: TimelineProvider {
 
             async let myAvatar = Self.loadAvatarImage(
                 defaults: defaults,
-                fileName: "my-avatar.jpg",
-                urlKey: "myAvatarUrl"
+                fileName: AppGroup.myAvatarFileName,
+                urlKey: WidgetDefaultsKey.myAvatarUrl
             )
             async let partnerAvatar = Self.loadAvatarImage(
                 defaults: defaults,
-                fileName: "partner-avatar.jpg",
-                urlKey: "partnerAvatarUrl"
+                fileName: AppGroup.partnerAvatarFileName,
+                urlKey: WidgetDefaultsKey.partnerAvatarUrl
             )
 
             let entry = SimpleEntry(
@@ -153,67 +147,11 @@ struct Provider: TimelineProvider {
         }
     }
 
-    /// Reads a coordinate from app-group defaults using explicit keys first, then ambient JSON payloads.
-    private static func coordinateFromAmbientData(
-        defaults: UserDefaults?,
-        explicitLatKey: String,
-        explicitLonKey: String,
-        jsonKeys: [String]
-    ) -> CLLocationCoordinate2D? {
-        guard let defaults else { return nil }
-
-        if let coordinate = coordinateFromExplicitKeys(defaults: defaults, latKey: explicitLatKey, lonKey: explicitLonKey) {
-            return coordinate
-        }
-
-        for key in jsonKeys {
-            if let coordinate = coordinateFromJSONString(defaults: defaults, key: key) {
-                return coordinate
-            }
-        }
-        return nil
-    }
-
-    private static func coordinateFromExplicitKeys(
-        defaults: UserDefaults,
-        latKey: String,
-        lonKey: String
-    ) -> CLLocationCoordinate2D? {
-        guard
-            let lat = defaults.object(forKey: latKey) as? Double,
-            let lon = defaults.object(forKey: lonKey) as? Double
-        else {
-            return nil
-        }
+    /// Reads a coordinate stored as two doubles in the App Group defaults.
+    private static func coordinate(in defaults: UserDefaults?, latKey: String, lonKey: String) -> CLLocationCoordinate2D? {
+        guard let lat = defaults?.object(forKey: latKey) as? Double,
+              let lon = defaults?.object(forKey: lonKey) as? Double else { return nil }
         return CLLocationCoordinate2D(latitude: lat, longitude: lon)
-    }
-
-    private static func coordinateFromJSONString(defaults: UserDefaults, key: String) -> CLLocationCoordinate2D? {
-        guard let json = defaults.string(forKey: key), let data = json.data(using: .utf8) else {
-            return nil
-        }
-        guard let object = try? JSONSerialization.jsonObject(with: data) else {
-            return nil
-        }
-        return coordinateFromJSONObject(object)
-    }
-
-    private static func coordinateFromJSONObject(_ object: Any) -> CLLocationCoordinate2D? {
-        if let dictionary = object as? [String: Any] {
-            if
-                let latitude = dictionary["latitude"] as? Double,
-                let longitude = dictionary["longitude"] as? Double
-            {
-                return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-            }
-            if
-                let lat = dictionary["lat"] as? Double,
-                let lon = dictionary["lon"] as? Double
-            {
-                return CLLocationCoordinate2D(latitude: lat, longitude: lon)
-            }
-        }
-        return nil
     }
 
     /// Renders a static edge-to-edge map image using MKMapSnapshotter (widget-safe).
@@ -240,7 +178,6 @@ struct Provider: TimelineProvider {
             )
         )
         options.size = size
-        options.scale = UIScreen.main.scale
 
         let snapshotter = MKMapSnapshotter(options: options)
         let snapshot = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<MKMapSnapshotter.Snapshot, Error>) in
@@ -262,7 +199,7 @@ struct Provider: TimelineProvider {
         fileName: String,
         urlKey: String
     ) async -> UIImage? {
-        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.jiayunzhao.Forever") {
+        if let container = AppGroup.containerURL {
             let fileURL = container.appendingPathComponent(fileName)
             if let data = try? Data(contentsOf: fileURL), let image = UIImage(data: data) {
                 return image

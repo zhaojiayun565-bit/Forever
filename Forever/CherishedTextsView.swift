@@ -2,6 +2,7 @@ import PhotosUI
 import SwiftData
 import SwiftUI
 import UIKit
+import os
 
 struct CherishedTextsView: View {
     @Query(sort: \CherishedText.dateAdded, order: .reverse) private var cherishedTexts: [CherishedText]
@@ -379,7 +380,7 @@ private enum CherishedTextSync {
                 modelContext.insert(cherishedText)
             }
         } catch {
-            print("🚨 Cherished text sync pull error (coupleId=\(coupleId)): \(error)")
+            Log.data.error("Cherished text sync pull error (coupleId=\(String(describing: coupleId))): \(String(describing: error))")
         }
     }
 
@@ -419,7 +420,7 @@ private enum CherishedTextSync {
 
         for item in unsynced {
             do {
-                let jpegData = jpegPayload(from: item.imageData)
+                let jpegData = await ImageEncoding.jpeg(from: item.imageData, quality: 0.85)
                 let imageURL = try await supabase.uploadCherishedTextImage(
                     data: jpegData,
                     coupleId: coupleId,
@@ -441,7 +442,7 @@ private enum CherishedTextSync {
                 item.isSynced = true
                 item.remoteImageURL = imageURL.absoluteString
             } catch {
-                print("🚨 Cherished text sync push error (coupleId=\(coupleId), id=\(item.id)): \(error)")
+                Log.data.error("Cherished text sync push error (coupleId=\(String(describing: coupleId)), id=\(String(describing: item.id))): \(String(describing: error))")
             }
         }
     }
@@ -454,7 +455,7 @@ private enum CherishedTextSync {
             do {
                 try await supabase.deleteCherishedText(id: item.id, imageURL: remoteURL)
             } catch {
-                print("🚨 Cherished text delete error: \(error)")
+                Log.data.error("Cherished text delete error: \(String(describing: error))")
             }
         }
 
@@ -468,15 +469,6 @@ private enum CherishedTextSync {
             throw URLError(.badServerResponse)
         }
         return data
-    }
-
-    /// Normalizes screenshot data to JPEG for storage upload.
-    private static func jpegPayload(from data: Data) -> Data {
-        guard let image = UIImage(data: data),
-              let jpeg = image.jpegData(compressionQuality: 0.85) else {
-            return data
-        }
-        return jpeg
     }
 }
 

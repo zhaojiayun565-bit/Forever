@@ -2,14 +2,10 @@ import Foundation
 import SwiftData
 
 enum SharedDatabase {
-    static let appGroupIdentifier = "group.com.jiayunzhao.Forever"
-
     static let shared: ModelContainer = {
         let schema = Schema([CherishedText.self])
-        guard let groupURL = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: appGroupIdentifier
-        ) else {
-            fatalError("App Group container unavailable: \(appGroupIdentifier)")
+        guard let groupURL = AppGroup.containerURL else {
+            fatalError("App Group container unavailable: \(AppGroup.identifier)")
         }
 
         let storeURL = groupURL.appending(path: "CherishedTexts.store")

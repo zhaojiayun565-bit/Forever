@@ -1,5 +1,6 @@
 import AuthenticationServices
 import SwiftUI
+import os
 
 /// Sign in with Apple button that signs into Supabase, reloads app state, then calls `onSignedIn`.
 struct AppleSignInButton: View {
@@ -56,13 +57,13 @@ struct AppleSignInButton: View {
                     await onSignedIn()
                 } catch {
                     errorMessage = "Could not sign in right now. Please try again."
-                    print("🚨 Apple Auth Error: \(error)")
+                    Log.auth.error("Apple Auth Error: \(String(describing: error))")
                 }
             }
         case .failure(let error):
             if (error as? ASAuthorizationError)?.code == .canceled { return }
             errorMessage = "Apple Sign In failed. Please try again."
-            print("🚨 Authorization failed: \(error)")
+            Log.auth.error("Authorization failed: \(String(describing: error))")
         }
     }
 }

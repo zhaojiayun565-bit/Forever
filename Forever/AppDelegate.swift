@@ -2,6 +2,7 @@ import CoreLocation
 import UIKit
 import UserNotifications
 import WidgetKit
+import os
 
 extension Notification.Name {
     /// Posted when a push or widget tap should route the user into the shared drawing board.
@@ -10,28 +11,6 @@ extension Notification.Name {
     static let openHome = Notification.Name("openHome")
     /// Posted when a push should route to the Questions tab.
     static let openQuestions = Notification.Name("openQuestions")
-}
-
-/// Shared keys for the App Group used by the widget and push pipeline.
-enum AppGroup {
-    static let suiteName = "group.com.jiayunzhao.Forever"
-    static let pendingDeviceTokenKey = "pendingDeviceToken"
-    static let myAvatarFileName = "my-avatar.jpg"
-    static let partnerAvatarFileName = "partner-avatar.jpg"
-    static let pendingOnboardingMemoryFileName = "pending-onboarding-memory.jpg"
-    static let pendingOnboardingMemoryMetadataKey = "pendingOnboardingMemory"
-}
-
-/// UserDefaults keys written by the main app and read by widget extensions.
-enum WidgetDefaultsKey {
-    static let partnerDistance = "partnerDistance"
-    static let partnerLatitude = "partnerLatitude"
-    static let partnerLongitude = "partnerLongitude"
-    static let myLatitude = "myLatitude"
-    static let myLongitude = "myLongitude"
-    static let partnerNoteUrl = "partnerNoteUrl"
-    static let partnerMessage = "partnerMessage"
-    static let partnerLocationUpdatedAt = "partnerLocationUpdatedAt"
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -44,14 +23,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
-        print("✅ APNs Device Token: \(token)")
+        Log.push.info("Registered for remote notifications")
         // Cache so a later sign-in can attach the token to the authenticated user.
-        UserDefaults(suiteName: AppGroup.suiteName)?.set(token, forKey: AppGroup.pendingDeviceTokenKey)
+        AppGroup.defaults?.set(token, forKey: AppGroup.pendingDeviceTokenKey)
         Task { try? await SupabaseManager.shared.updateDeviceToken(token) }
     }
     
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        print("🚨 Failed to register for remote notifications: \(error)")
+        Log.push.error("Failed to register for remote notifications: \(String(describing: error))")
     }
     
     /// Applies push payload to App Group defaults, then reloads widget timelines.

@@ -52,18 +52,3 @@ struct CameraImagePicker: UIViewControllerRepresentable {
         }
     }
 }
-
-extension UIImage {
-    /// Scales down large photos before avatar upload.
-    func resizedForAvatar(maxDimension: CGFloat = 512) -> UIImage? {
-        let maxSide = max(size.width, size.height)
-        guard maxSide > maxDimension else { return self }
-
-        let scale = maxDimension / maxSide
-        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
-        let renderer = UIGraphicsImageRenderer(size: newSize)
-        return renderer.image { _ in
-            draw(in: CGRect(origin: .zero, size: newSize))
-        }
-    }
-}

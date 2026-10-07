@@ -2,10 +2,11 @@ import CoreLocation
 import Foundation
 import Kingfisher
 import Observation
-import UIKit
-import WidgetKit
 import Supabase
 import SwiftData
+import UIKit
+import WidgetKit
+import os
 
 /// Coordinate for map focus after saving a memory; explicit `Equatable` for SwiftUI `onChange`.
 struct NewlyAddedMemoryCoordinate: Equatable {
@@ -55,7 +56,7 @@ final class AppStateManager {
                 // 2. Fetch or create their database profile
                 var profile = try await supabase.fetchProfile()
                 if profile == nil {
-                    print("👤 Creating new profile for authenticated user...")
+                    Log.app.info("Creating profile for new user")
                     try await Self.createProfileWithRetries(supabase: supabase)
                     profile = try await supabase.fetchProfile()
                 }
@@ -77,7 +78,7 @@ final class AppStateManager {
                 await applyOnboardingDraftIfNeeded()
                 await SubscriptionManager.shared.refreshSharedPremiumAccess(appState: self)
                 await flushPendingDeviceToken()
-                print("✅ SUCCESS: Profile loaded.")
+                Log.app.info("Profile loaded")
             } else {
                 await SubscriptionManager.shared.syncUserID(nil)
                 // Not logged in. Clear state so LoginView shows.
@@ -88,10 +89,10 @@ final class AppStateManager {
                 myAvatarImage = nil
                 clearWidgetData(includePersonalData: true)
                 WidgetCenter.shared.reloadAllTimelines()
-                print("🔒 User is not authenticated. Awaiting login.")
+                Log.app.info("No session; awaiting sign-in")
             }
         } catch {
-            print("🚨 INIT ERROR: \(error)")
+            Log.app.error("App initialization failed: \(String(describing: error))")
             await realtime.stopAll()
             currentUser = nil
             currentCouple = nil
@@ -104,7 +105,7 @@ final class AppStateManager {
 
     /// Loads the signed-in user's avatar from the App Group cache.
     private func loadMyAvatarFromAppGroup() {
-        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) else { return }
+        guard let container = AppGroup.containerURL else { return }
         let fileURL = container.appendingPathComponent(AppGroup.myAvatarFileName)
         guard let data = try? Data(contentsOf: fileURL), let image = UIImage(data: data) else { return }
         myAvatarImage = image
@@ -126,13 +127,11 @@ final class AppStateManager {
 
     /// Saves display name, partner nickname, and anniversary; refreshes local state and widgets.
     func updateProfileDetails(name: String, partnerNickname: String?, anniversary: Date) async throws {
-        try await supabase.updateProfileDetails(
+        currentUser = try await supabase.updateProfileDetails(
             name: name,
             partnerNickname: partnerNickname,
             anniversary: anniversary
         )
-        guard let updated = try await supabase.fetchProfile() else { return }
-        currentUser = updated
         if let partner = partnerProfile {
             updateWidgetData(partner: partner)
         } else {
@@ -140,16 +139,15 @@ final class AppStateManager {
         }
     }
 
-    /// Uploads our location to Supabase, refreshes currentUser so its lat/lon is current,
+    /// Uploads our location (throttled), applies it to `currentUser`,
     /// then fetches the partner's profile and reloads widget data.
     func syncAndRefreshWidgets() async {
         do {
-            if try await AmbientDataManager.shared.syncData(),
-               let updated = try? await supabase.fetchProfile() {
-                currentUser = updated
+            if let upload = try await AmbientDataManager.shared.syncData() {
+                currentUser?.apply(upload)
             }
         } catch {
-            print("🚨 Location sync error: \(error)")
+            Log.location.error("Location sync error: \(String(describing: error))")
         }
         await loadPartnerProfile()
     }
@@ -173,7 +171,7 @@ final class AppStateManager {
             self.updateWidgetData(partner: partner)
             await syncAvatarImagesToAppGroup()
         } catch {
-            print("🚨 Failed to fetch partner profile: \(error)")
+            Log.app.error("Failed to fetch partner profile: \(String(describing: error))")
         }
     }
 
@@ -182,20 +180,14 @@ final class AppStateManager {
         do {
             memories = try await supabase.fetchMemories(coupleId: currentCouple?.id, creatorId: user.id)
         } catch {
-            print("🚨 Fetch Memories Error: \(error)")
+            Log.app.error("Failed to fetch memories: \(String(describing: error))")
         }
     }
 
     /// Stages the onboarding first memory locally until the user signs in with Apple.
-    func stageOnboardingMemory(image: UIImage, note: String, coordinate: CLLocationCoordinate2D) throws {
-        guard let data = image.jpegData(compressionQuality: 0.7) else {
-            throw NSError(
-                domain: "OnboardingMemory",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Could not process the photo."]
-            )
-        }
-        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) else {
+    func stageOnboardingMemory(image: UIImage, note: String, coordinate: CLLocationCoordinate2D) async throws {
+        let data = try await ImageEncoding.jpeg(image, quality: 0.7)
+        guard let container = AppGroup.containerURL else {
             throw NSError(
                 domain: "OnboardingMemory",
                 code: -2,
@@ -242,7 +234,7 @@ final class AppStateManager {
             clearPendingOnboardingMemory()
             return true
         } catch {
-            print("🚨 Flush onboarding memory error: \(error)")
+            Log.app.error("Flush onboarding memory error: \(String(describing: error))")
             return false
         }
     }
@@ -260,7 +252,7 @@ final class AppStateManager {
                 try await updateProfileDetails(name: name, partnerNickname: nickname, anniversary: anniversary)
                 OnboardingFlowStorage.clearDraft()
             } catch {
-                print("🚨 Apply onboarding draft error: \(error)")
+                Log.app.error("Apply onboarding draft error: \(String(describing: error))")
             }
         }
 
@@ -287,14 +279,13 @@ final class AppStateManager {
         let coupleIdForMemory = currentCouple?.id
         let uploadedUrls = try await withThrowingTaskGroup(of: URL.self) { group in
             for image in images {
-                if let data = image.jpegData(compressionQuality: 0.7) {
-                    group.addTask {
-                        try await self.supabase.uploadMemoryImage(
-                            data: data,
-                            coupleId: coupleIdForMemory,
-                            creatorId: creatorId
-                        )
-                    }
+                group.addTask {
+                    let data = try await ImageEncoding.jpeg(image, quality: 0.7)
+                    return try await self.supabase.uploadMemoryImage(
+                        data: data,
+                        coupleId: coupleIdForMemory,
+                        creatorId: creatorId
+                    )
                 }
             }
 
@@ -330,19 +321,19 @@ final class AppStateManager {
     }
 
     private func persistPendingOnboardingMemory(_ pending: PendingOnboardingMemory) {
-        guard let defaults = UserDefaults(suiteName: AppGroup.suiteName),
+        guard let defaults = AppGroup.defaults,
               let data = try? JSONEncoder().encode(pending) else { return }
         defaults.set(data, forKey: AppGroup.pendingOnboardingMemoryMetadataKey)
     }
 
     private func loadPendingOnboardingMemory() -> PendingOnboardingMemory? {
-        guard let defaults = UserDefaults(suiteName: AppGroup.suiteName),
+        guard let defaults = AppGroup.defaults,
               let data = defaults.data(forKey: AppGroup.pendingOnboardingMemoryMetadataKey) else { return nil }
         return try? JSONDecoder().decode(PendingOnboardingMemory.self, from: data)
     }
 
     private func loadPendingOnboardingImage(_ pending: PendingOnboardingMemory) -> UIImage? {
-        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) else {
+        guard let container = AppGroup.containerURL else {
             return nil
         }
         let fileURL = container.appendingPathComponent(pending.imageFileName)
@@ -351,10 +342,10 @@ final class AppStateManager {
     }
 
     private func clearPendingOnboardingMemory() {
-        if let defaults = UserDefaults(suiteName: AppGroup.suiteName) {
+        if let defaults = AppGroup.defaults {
             defaults.removeObject(forKey: AppGroup.pendingOnboardingMemoryMetadataKey)
         }
-        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) {
+        if let container = AppGroup.containerURL {
             let fileURL = container.appendingPathComponent(AppGroup.pendingOnboardingMemoryFileName)
             try? FileManager.default.removeItem(at: fileURL)
         }
@@ -379,21 +370,21 @@ final class AppStateManager {
             affects: WidgetKind.distance
         )
         writer.set(
-            UserDefaults.standard.string(forKey: "distanceUnit") ?? "mi",
-            forKey: "distanceUnit",
+            UserDefaults.standard.string(forKey: WidgetDefaultsKey.distanceUnit) ?? "mi",
+            forKey: WidgetDefaultsKey.distanceUnit,
             affects: WidgetKind.distance
         )
 
         writer.set(partner.latestNoteUrl, forKey: WidgetDefaultsKey.partnerNoteUrl, affects: [WidgetKind.drawing])
-        writer.set(partnerDisplayName, forKey: "partnerName", affects: WidgetKind.all)
+        writer.set(partnerDisplayName, forKey: WidgetDefaultsKey.partnerName, affects: WidgetKind.all)
         writer.set(partner.latestMessage, forKey: WidgetDefaultsKey.partnerMessage, affects: [WidgetKind.lockScreenMessage, WidgetKind.distanceHome])
-        writer.set(currentUser?.latestMessage, forKey: "myMessage", affects: [WidgetKind.distanceHome])
+        writer.set(currentUser?.latestMessage, forKey: WidgetDefaultsKey.myMessage, affects: [WidgetKind.distanceHome])
         writer.set(
             (currentUser?.anniversaryDate ?? partner.anniversaryDate)?.timeIntervalSince1970,
-            forKey: "anniversaryDate",
+            forKey: WidgetDefaultsKey.anniversaryDate,
             affects: [WidgetKind.daysTogether]
         )
-        writer.set(partner.avatarUrl, forKey: "partnerAvatarUrl", affects: [WidgetKind.distanceHome, WidgetKind.daysTogether])
+        writer.set(partner.avatarUrl, forKey: WidgetDefaultsKey.partnerAvatarUrl, affects: [WidgetKind.distanceHome, WidgetKind.daysTogether])
         writeMyWidgetFields(into: &writer)
         writer.reload()
     }
@@ -403,7 +394,7 @@ final class AppStateManager {
         guard var writer = WidgetDefaultsWriter() else { return }
         writeMyWidgetFields(into: &writer)
         if let date = currentUser?.anniversaryDate {
-            writer.set(date.timeIntervalSince1970, forKey: "anniversaryDate", affects: [WidgetKind.daysTogether])
+            writer.set(date.timeIntervalSince1970, forKey: WidgetDefaultsKey.anniversaryDate, affects: [WidgetKind.daysTogether])
         }
         writer.reload()
     }
@@ -411,19 +402,19 @@ final class AppStateManager {
     /// Writes fields owned by the signed-in user (name, avatar URL).
     private func writeMyWidgetFields(into writer: inout WidgetDefaultsWriter) {
         if let myName = currentUser?.displayName {
-            writer.set(myName, forKey: "myName", affects: WidgetKind.all)
+            writer.set(myName, forKey: WidgetDefaultsKey.myName, affects: WidgetKind.all)
         }
-        writer.set(currentUser?.avatarUrl, forKey: "myAvatarUrl", affects: [WidgetKind.distanceHome, WidgetKind.daysTogether])
+        writer.set(currentUser?.avatarUrl, forKey: WidgetDefaultsKey.myAvatarUrl, affects: [WidgetKind.distanceHome, WidgetKind.daysTogether])
     }
 
     /// Downloads avatar images into the App Group (only when the URL changed) so widgets render them offline.
     func syncAvatarImagesToAppGroup() async {
-        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName),
+        guard let container = AppGroup.containerURL,
               var writer = WidgetDefaultsWriter() else { return }
 
         let avatars: [(url: String?, fileName: String, cacheKey: String)] = [
-            (currentUser?.avatarUrl, AppGroup.myAvatarFileName, "myAvatarCachedUrl"),
-            (partnerProfile?.avatarUrl, AppGroup.partnerAvatarFileName, "partnerAvatarCachedUrl")
+            (currentUser?.avatarUrl, AppGroup.myAvatarFileName, WidgetDefaultsKey.myAvatarCachedUrl),
+            (partnerProfile?.avatarUrl, AppGroup.partnerAvatarFileName, WidgetDefaultsKey.partnerAvatarCachedUrl)
         ]
         for avatar in avatars {
             let fileURL = container.appendingPathComponent(avatar.fileName)
@@ -439,10 +430,10 @@ final class AppStateManager {
 
     /// Saves a freshly picked avatar locally and uploads it to Supabase.
     func uploadProfileAvatar(_ image: UIImage) async throws {
-        guard let data = image.resizedForAvatar()?.jpegData(compressionQuality: 0.85) else { return }
+        let data = try await ImageEncoding.jpeg(image, quality: 0.85, maxDimension: 512)
 
         myAvatarImage = image
-        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) {
+        if let container = AppGroup.containerURL {
             try data.write(to: container.appendingPathComponent(AppGroup.myAvatarFileName), options: .atomic)
         }
 
@@ -450,12 +441,10 @@ final class AppStateManager {
             try? await ImageCache.default.removeImage(forKey: url.absoluteString)
         }
 
-        _ = try await supabase.uploadProfileAvatar(data)
-        if let updated = try? await supabase.fetchProfile() {
-            currentUser = updated
-            if let urlString = updated.avatarUrl, let url = URL(string: urlString) {
-                try? await ImageCache.default.removeImage(forKey: url.absoluteString)
-            }
+        let updated = try await supabase.uploadProfileAvatar(data)
+        currentUser = updated
+        if let urlString = updated.avatarUrl, let url = URL(string: urlString) {
+            try? await ImageCache.default.removeImage(forKey: url.absoluteString)
         }
         if let partner = partnerProfile {
             updateWidgetData(partner: partner)
@@ -466,7 +455,7 @@ final class AppStateManager {
     /// Records the avatar URL now cached on disk and reloads widgets that show avatars.
     private func markAvatarWidgetsChanged(cachedURL: String?) {
         guard var writer = WidgetDefaultsWriter() else { return }
-        writer.set(cachedURL, forKey: "myAvatarCachedUrl", affects: [])
+        writer.set(cachedURL, forKey: WidgetDefaultsKey.myAvatarCachedUrl, affects: [])
         writer.markChanged([WidgetKind.distanceHome, WidgetKind.daysTogether])
         writer.reload()
     }
@@ -477,16 +466,13 @@ final class AppStateManager {
             try? await ImageCache.default.removeImage(forKey: url.absoluteString)
         }
 
-        try await supabase.removeProfileAvatar()
+        currentUser = try await supabase.removeProfileAvatar()
 
         myAvatarImage = nil
-        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) {
+        if let container = AppGroup.containerURL {
             try? FileManager.default.removeItem(at: container.appendingPathComponent(AppGroup.myAvatarFileName))
         }
 
-        if let updated = try? await supabase.fetchProfile() {
-            currentUser = updated
-        }
         if let partner = partnerProfile {
             updateWidgetData(partner: partner)
         }
@@ -524,7 +510,7 @@ final class AppStateManager {
 
             await resetCoupleState()
         } catch {
-            print("🚨 Failed to unpair: \(error)")
+            Log.app.error("Failed to unpair: \(String(describing: error))")
         }
     }
 
@@ -550,36 +536,36 @@ final class AppStateManager {
 
     /// Clears cached widget data; optionally removes the signed-in user's cached location too.
     private func clearWidgetData(includePersonalData: Bool) {
-        guard let defaults = UserDefaults(suiteName: "group.com.jiayunzhao.Forever") else { return }
+        guard let defaults = AppGroup.defaults else { return }
         let partnerKeys = [
             "partnerBattery",
-            "partnerDistance",
-            "partnerLatitude",
-            "partnerLongitude",
-            "partnerLocationUpdatedAt",
-            "partnerNoteUrl",
-            "partnerName",
-            "partnerMessage",
-            "myMessage",
-            "partnerAvatarUrl",
-            "partnerAvatarCachedUrl",
-            "anniversaryDate"
+            WidgetDefaultsKey.partnerDistance,
+            WidgetDefaultsKey.partnerLatitude,
+            WidgetDefaultsKey.partnerLongitude,
+            WidgetDefaultsKey.partnerLocationUpdatedAt,
+            WidgetDefaultsKey.partnerNoteUrl,
+            WidgetDefaultsKey.partnerName,
+            WidgetDefaultsKey.partnerMessage,
+            WidgetDefaultsKey.myMessage,
+            WidgetDefaultsKey.partnerAvatarUrl,
+            WidgetDefaultsKey.partnerAvatarCachedUrl,
+            WidgetDefaultsKey.anniversaryDate
         ]
         partnerKeys.forEach { defaults.removeObject(forKey: $0) }
 
         if includePersonalData {
             let personalKeys = [
-                "myLatitude",
-                "myLongitude",
-                "myName",
-                "myMessage",
-                "myAvatarUrl",
-                "myAvatarCachedUrl"
+                WidgetDefaultsKey.myLatitude,
+                WidgetDefaultsKey.myLongitude,
+                WidgetDefaultsKey.myName,
+                WidgetDefaultsKey.myMessage,
+                WidgetDefaultsKey.myAvatarUrl,
+                WidgetDefaultsKey.myAvatarCachedUrl
             ]
             personalKeys.forEach { defaults.removeObject(forKey: $0) }
         }
 
-        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.suiteName) {
+        if let container = AppGroup.containerURL {
             try? FileManager.default.removeItem(at: container.appendingPathComponent(AppGroup.partnerAvatarFileName))
             if includePersonalData {
                 try? FileManager.default.removeItem(at: container.appendingPathComponent(AppGroup.myAvatarFileName))
@@ -589,7 +575,7 @@ final class AppStateManager {
 
     /// Attaches a device token cached before sign-in to the now-authenticated user.
     private func flushPendingDeviceToken() async {
-        guard let defaults = UserDefaults(suiteName: AppGroup.suiteName),
+        guard let defaults = AppGroup.defaults,
               let token = defaults.string(forKey: AppGroup.pendingDeviceTokenKey)
         else { return }
         try? await supabase.updateDeviceToken(token)

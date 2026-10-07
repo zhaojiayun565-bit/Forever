@@ -108,23 +108,24 @@ final class AmbientDataManager: NSObject, CLLocationManagerDelegate {
     /// - Parameter force: Bypass the throttle (e.g. right after permission is granted or pairing).
     /// - Returns: Whether an upload happened.
     @discardableResult
-    func syncData(force: Bool = false) async throws -> Bool {
+    func syncData(force: Bool = false) async throws -> LocationUpload? {
         guard isLocationAuthorized else { throw AmbientDataError.locationDenied }
 
         let location = try await fetchCurrentLocation()
         if !force, let lastUpload,
            location.distance(from: lastUpload.location) < Self.uploadMinDistance,
            Date().timeIntervalSince(lastUpload.date) < Self.uploadMinInterval {
-            return false
+            return nil
         }
 
-        try await SupabaseManager.shared.updateAmbientData(
+        let batteryLevel = fetchCurrentBatteryLevel()
+        let updatedAt = try await SupabaseManager.shared.updateAmbientData(
             latitude: location.coordinate.latitude,
             longitude: location.coordinate.longitude,
-            batteryLevel: fetchCurrentBatteryLevel()
+            batteryLevel: batteryLevel
         )
         lastUpload = (location, Date())
-        return true
+        return LocationUpload(coordinate: location.coordinate, batteryLevel: batteryLevel, updatedAt: updatedAt)
     }
 
     /// Forgets the last upload so the next sync always sends (e.g. after sign-in or pairing).
@@ -177,4 +178,11 @@ final class AmbientDataManager: NSObject, CLLocationManagerDelegate {
             locationContinuation = nil
         }
     }
+}
+
+/// What `AmbientDataManager.syncData` saved to the server, so callers can update local state without refetching.
+struct LocationUpload {
+    let coordinate: CLLocationCoordinate2D
+    let batteryLevel: Int
+    let updatedAt: Date
 }

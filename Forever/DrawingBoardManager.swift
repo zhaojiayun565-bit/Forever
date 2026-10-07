@@ -3,6 +3,7 @@ import Observation
 import Supabase
 import SwiftUI
 import UIKit
+import os
 
 /// Owns the shared drawing board's state and Supabase sync.
 ///
@@ -94,15 +95,15 @@ final class DrawingBoardManager {
         let statusStream = channel.statusChange
         Task {
             for await status in statusStream {
-                print("🎨 [board] channel status -> \(status)")
+                Log.drawing.debug("Channel status -> \(String(describing: status))")
             }
         }
 
         do {
             try await channel.subscribeWithError()
-            print("🎨 [board] subscribed OK. topic=\(channel.topic) status=\(channel.status)")
+            Log.drawing.debug("Subscribed OK. topic=\(channel.topic) status=\(String(describing: channel.status))")
         } catch {
-            print("🚨 [board] subscribe FAILED: \(error)")
+            Log.drawing.error("Subscribe FAILED: \(String(describing: error))")
         }
         await loadExisting(coupleId: coupleId)
     }
@@ -123,7 +124,7 @@ final class DrawingBoardManager {
         do {
             committedStrokes = try await supabase.fetchStrokes(coupleId: coupleId)
         } catch {
-            print("🚨 Failed to load board strokes: \(error)")
+            Log.drawing.error("Failed to load board strokes: \(String(describing: error))")
         }
         do {
             let couple = try await supabase.fetchCouple(id: coupleId)
@@ -132,7 +133,7 @@ final class DrawingBoardManager {
                 wallpaper = await downloadWallpaper(from: url)
             }
         } catch {
-            print("🚨 Failed to load board wallpaper: \(error)")
+            Log.drawing.error("Failed to load board wallpaper: \(String(describing: error))")
         }
     }
 
@@ -140,9 +141,8 @@ final class DrawingBoardManager {
     func setWallpaper(_ image: UIImage) async {
         wallpaper = image
         guard let coupleId else { return }
-        guard let data = image.jpegData(compressionQuality: 0.88) else { return }
-
         do {
+            let data = try await ImageEncoding.jpeg(image, quality: 0.88)
             let url = try await supabase.uploadBoardWallpaper(data: data, coupleId: coupleId)
             try await supabase.updateBoardWallpaperUrl(coupleId: coupleId, url: url)
             wallpaperUrl = url
@@ -153,7 +153,7 @@ final class DrawingBoardManager {
                 )
             }
         } catch {
-            print("🚨 Failed to sync board wallpaper: \(error)")
+            Log.drawing.error("Failed to sync board wallpaper: \(String(describing: error))")
             showToast(String(localized: "Couldn't update background. Try again."))
         }
     }
@@ -194,7 +194,7 @@ final class DrawingBoardManager {
             let payload = DrawingStrokeInsert(coupleId: coupleId, stroke: stroke)
             try await supabase.insertStroke(payload)
         } catch {
-            print("🚨 Failed to persist stroke: \(error)")
+            Log.drawing.error("Failed to persist stroke: \(String(describing: error))")
         }
     }
 
@@ -222,11 +222,11 @@ final class DrawingBoardManager {
             points: points.flattened,
             isFinal: isFinal
         )
-        print("🎨 [board] SEND stroke pts=\(points.count) final=\(isFinal) status=\(channel.status)")
+        Log.drawing.debug("SEND stroke pts=\(points.count) final=\(isFinal) status=\(String(describing: channel.status))")
         do {
             try await channel.broadcast(event: BoardEvent.stroke, message: payload)
         } catch {
-            print("🚨 [board] broadcast send failed: \(error)")
+            Log.drawing.error("Broadcast send failed: \(String(describing: error))")
         }
         if isFinal { activeStrokeId = nil }
     }
@@ -245,7 +245,7 @@ final class DrawingBoardManager {
                 message: BoardControlPayload(authorId: currentUserId, strokeId: last.id)
             )
         } catch {
-            print("🚨 Undo failed: \(error)")
+            Log.drawing.error("Undo failed: \(String(describing: error))")
         }
     }
 
@@ -261,7 +261,7 @@ final class DrawingBoardManager {
                 message: BoardControlPayload(authorId: currentUserId, strokeId: nil)
             )
         } catch {
-            print("🚨 Clear failed: \(error)")
+            Log.drawing.error("Clear failed: \(String(describing: error))")
         }
     }
 
@@ -273,7 +273,7 @@ final class DrawingBoardManager {
             showToast(String(localized: "Add a photo or draw something"))
             return
         }
-        guard let widgetData = BoardSnapshotRenderer.widgetSquare(
+        guard let widgetData = await BoardSnapshotRenderer.widgetSquare(
             strokes: strokes,
             wallpaper: wallpaper,
             boardSize: boardSize
@@ -287,7 +287,7 @@ final class DrawingBoardManager {
             let noteUrl = try await supabase.uploadNoteImage(data: widgetData)
             try await supabase.updateLatestNoteUrl(url: noteUrl)
 
-            if let archiveData = BoardSnapshotRenderer.archiveJPEG(
+            if let archiveData = await BoardSnapshotRenderer.archiveJPEG(
                 strokes: strokes,
                 wallpaper: wallpaper,
                 boardSize: boardSize
@@ -302,7 +302,7 @@ final class DrawingBoardManager {
 
             showToast(String(localized: "Sent to \(partnerName)'s widget"))
         } catch {
-            print("🚨 Failed to send drawing to widget: \(error)")
+            Log.drawing.error("Failed to send drawing to widget: \(String(describing: error))")
             showToast(String(localized: "Couldn't send. Try again."))
         }
     }
@@ -320,16 +320,16 @@ final class DrawingBoardManager {
     // MARK: - Incoming broadcast handlers
 
     private func handleStroke(_ json: JSONObject) {
-        print("🎨 [board] RECV raw=\(json)")
+        Log.drawing.debug("RECV stroke broadcast")
         let chunk: StrokeChunkPayload
         do {
             guard let decoded = try json["payload"]?.decode(as: StrokeChunkPayload.self) else {
-                print("🚨 [board] RECV missing payload key")
+                Log.drawing.error("RECV missing payload key")
                 return
             }
             chunk = decoded
         } catch {
-            print("🚨 [board] RECV decode failed: \(error)")
+            Log.drawing.error("RECV decode failed: \(String(describing: error))")
             return
         }
         let newPoints = chunk.points.toCGPoints()
@@ -361,7 +361,7 @@ final class DrawingBoardManager {
     }
 
     private func handleUndo(_ json: JSONObject) {
-        print("🎨 [board] RECV undo")
+        Log.drawing.debug("RECV undo")
         guard
             let payload = try? json["payload"]?.decode(as: BoardControlPayload.self),
             let strokeId = payload.strokeId
@@ -370,7 +370,7 @@ final class DrawingBoardManager {
     }
 
     private func handleClear(_ json: JSONObject) {
-        print("🎨 [board] RECV clear")
+        Log.drawing.debug("RECV clear")
         committedStrokes.removeAll()
         remoteActiveStrokes.removeAll()
     }

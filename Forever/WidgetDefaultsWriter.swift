@@ -24,7 +24,7 @@ struct WidgetDefaultsWriter {
     private(set) var kindsToReload: Set<String> = []
 
     init?() {
-        guard let defaults = UserDefaults(suiteName: AppGroup.suiteName) else { return nil }
+        guard let defaults = AppGroup.defaults else { return nil }
         self.defaults = defaults
     }
 

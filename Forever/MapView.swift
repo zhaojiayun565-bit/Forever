@@ -24,22 +24,20 @@ struct MapDashboardView: View {
                 }
                 .mapStyle(.standard(elevation: .realistic))
                 .ignoresSafeArea(edges: .top)
-                .onChange(of: state.newlyAddedLocation) { _, newLocation in
-                    if let coord = newLocation {
-                        let center = CLLocationCoordinate2D(latitude: coord.latitude, longitude: coord.longitude)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            withAnimation(.easeInOut(duration: 1.5)) {
-                                position = .region(
-                                    MKCoordinateRegion(
-                                        center: center,
-                                        latitudinalMeters: 5000,
-                                        longitudinalMeters: 5000
-                                    )
-                                )
-                            }
-                            state.newlyAddedLocation = nil
-                        }
+                .task(id: state.newlyAddedLocation) {
+                    guard let coord = state.newlyAddedLocation else { return }
+                    let center = CLLocationCoordinate2D(latitude: coord.latitude, longitude: coord.longitude)
+                    guard (try? await Task.sleep(for: .milliseconds(500))) != nil else { return }
+                    withAnimation(.easeInOut(duration: 1.5)) {
+                        position = .region(
+                            MKCoordinateRegion(
+                                center: center,
+                                latitudinalMeters: 5000,
+                                longitudinalMeters: 5000
+                            )
+                        )
                     }
+                    state.newlyAddedLocation = nil
                 }
 
                 MemoryMapFABButton(accent: .pink) {

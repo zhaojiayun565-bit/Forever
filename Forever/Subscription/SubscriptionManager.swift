@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import RevenueCat
 import Supabase
+import os
 
 /// Owns RevenueCat customer info, offerings, purchases, and Pro entitlement state.
 @MainActor
@@ -224,7 +225,7 @@ final class SubscriptionManager {
             try await supabase.syncPremiumStatus()
             lastSyncedPremium = signature
         } catch {
-            print("🚨 Premium sync error: \(error)")
+            Log.purchases.error("Premium sync error: \(String(describing: error))")
         }
     }
 }

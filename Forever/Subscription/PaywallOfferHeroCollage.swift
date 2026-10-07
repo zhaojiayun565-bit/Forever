@@ -50,7 +50,7 @@ struct PaywallOfferHeroCollage: View {
             }
         }
         .frame(width: Self.collageWidth, height: Self.collageHeight)
-        .onAppear(perform: startReveal)
+        .task { await startReveal() }
     }
 
     @ViewBuilder
@@ -66,17 +66,18 @@ struct PaywallOfferHeroCollage: View {
             .zIndex(Double(index))
     }
 
-    private func startReveal() {
+    private func startReveal() async {
         if reduceMotion {
             revealedCards = [true, true, true]
             return
         }
 
         for index in revealedCards.indices {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.revealDelay * Double(index)) {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
-                    revealedCards[index] = true
-                }
+            if index > 0 {
+                guard (try? await Task.sleep(for: .seconds(Self.revealDelay))) != nil else { return }
+            }
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
+                revealedCards[index] = true
             }
         }
     }

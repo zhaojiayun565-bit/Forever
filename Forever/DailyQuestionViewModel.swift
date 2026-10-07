@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 /// Loads and manages the home-screen daily question and reveal state.
 @MainActor
@@ -55,7 +56,7 @@ final class DailyQuestionViewModel {
             }
             await startRealtime(coupleId: couple.id)
         } catch {
-            print("🚨 Failed to load daily question: \(error)")
+            Log.data.error("Failed to load daily question: \(String(describing: error))")
             errorMessage = error.localizedDescription
         }
     }
@@ -72,7 +73,7 @@ final class DailyQuestionViewModel {
             )
             return true
         } catch {
-            print("🚨 Failed to submit answer: \(error)")
+            Log.data.error("Failed to submit answer: \(String(describing: error))")
             errorMessage = error.localizedDescription
             return false
         }
@@ -101,7 +102,7 @@ final class DailyQuestionViewModel {
                 questionId: questionId
             )
         } catch {
-            print("🚨 Failed to refresh couple answer: \(error)")
+            Log.data.error("Failed to refresh couple answer: \(String(describing: error))")
         }
     }
 }

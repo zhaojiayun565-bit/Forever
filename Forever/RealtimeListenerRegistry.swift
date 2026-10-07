@@ -1,5 +1,6 @@
 import Foundation
 import Supabase
+import os
 
 /// Keeps at most one Realtime subscription per topic alive.
 /// - Restarting a topic waits for the previous channel to finish tearing down, so a stale teardown
@@ -36,7 +37,7 @@ final class RealtimeListenerRegistry {
                     backoff = .seconds(1)
                     await consume()
                 } catch {
-                    print("🚨 Realtime subscribe failed for \(topic): \(error)")
+                    Log.realtime.error("Realtime subscribe failed for \(topic): \(String(describing: error))")
                 }
                 await supabase.tearDownRealtimeChannel(topic)
 

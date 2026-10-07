@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 /// Loads question categories for the Discover tab.
 @MainActor
@@ -75,7 +76,7 @@ final class DiscoverQuestionsViewModel {
             answeredCounts = answered
             await startRealtime(coupleId: couple.id)
         } catch {
-            print("🚨 Failed to load question categories: \(error)")
+            Log.data.error("Failed to load question categories: \(String(describing: error))")
         }
     }
 
@@ -106,7 +107,7 @@ final class DiscoverQuestionsViewModel {
             }
             answeredCounts = answered
         } catch {
-            print("🚨 Failed to refresh category pacing: \(error)")
+            Log.data.error("Failed to refresh category pacing: \(String(describing: error))")
         }
     }
 }
@@ -200,7 +201,7 @@ final class CategoryQuestionsViewModel {
             )
             await startRealtime(coupleId: couple.id)
         } catch {
-            print("🚨 Failed to load category questions: \(error)")
+            Log.data.error("Failed to load category questions: \(String(describing: error))")
         }
     }
 
@@ -235,7 +236,7 @@ final class CategoryQuestionsViewModel {
             await refreshAnswers()
             return true
         } catch {
-            print("🚨 Failed to submit category answer: \(error)")
+            Log.data.error("Failed to submit category answer: \(String(describing: error))")
             return false
         }
     }
@@ -263,7 +264,7 @@ final class CategoryQuestionsViewModel {
                     .map { ($0.questionId, $0) }
             )
         } catch {
-            print("🚨 Failed to refresh category answers: \(error)")
+            Log.data.error("Failed to refresh category answers: \(String(describing: error))")
         }
     }
 }

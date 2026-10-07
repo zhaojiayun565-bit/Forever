@@ -1,6 +1,7 @@
 import Kingfisher
 import SwiftUI
 import UIKit
+import os
 
 struct MemoryDetailView: View {
     let memory: CoupleMemory
@@ -141,7 +142,7 @@ struct MemoryDetailView: View {
             dismiss()
         } catch {
             actionErrorMessage = error.localizedDescription
-            print("🚨 Failed to delete: \(error)")
+            Log.data.error("Failed to delete: \(String(describing: error))")
             isDeleting = false
         }
     }

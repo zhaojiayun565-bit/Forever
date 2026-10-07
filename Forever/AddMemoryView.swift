@@ -2,6 +2,7 @@ import MapKit
 import PhotosUI
 import SwiftUI
 import UIKit
+import os
 
 struct AddMemoryView: View {
     @Environment(AppStateManager.self) private var state
@@ -231,7 +232,7 @@ struct AddMemoryView: View {
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
-            print("🚨 Save Error: \(error)")
+            Log.data.error("Save Error: \(String(describing: error))")
         }
     }
 }

@@ -602,7 +602,7 @@ private struct PaywallPlanPicker: View {
                     isSelected: selectedPlan == .monthly,
                     colorScheme: colorScheme
                 ) {
-                    selectedPlan = .monthly
+                    select(.monthly)
                 }
             }
 
@@ -619,9 +619,16 @@ private struct PaywallPlanPicker: View {
                     isSelected: selectedPlan == .yearly,
                     colorScheme: colorScheme
                 ) {
-                    selectedPlan = .yearly
+                    select(.yearly)
                 }
             }
+        }
+    }
+
+    /// Switches plans with a near-instant fade so trial/no-trial content swaps without a jarring jump.
+    private func select(_ plan: PaywallPlanOption) {
+        withAnimation(.easeOut(duration: 0.12)) {
+            selectedPlan = plan
         }
     }
 }

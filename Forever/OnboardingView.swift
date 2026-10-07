@@ -119,10 +119,9 @@ struct OnboardingView: View {
                     }
 
                     stepView
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .id(viewModel.currentStep)
                         .transition(standardStepTransition)
-
-                    Spacer()
                 }
             }
         }

@@ -482,23 +482,16 @@ private struct PaywallTrialHeadline: View {
         .multilineTextAlignment(.center)
     }
 
-    @ViewBuilder
+    /// "FREE" is accented in both color schemes.
     private var secondLine: some View {
-        let font = ForeverFont.header(size: PaywallStep3Metrics.headlineSize, relativeTo: .title)
-        if colorScheme == .dark {
-            Text("FREE trial to continue")
-                .font(font)
+        (
+            Text("FREE")
+                .foregroundStyle(PaywallTheme.accent)
+                .bold()
+            + Text(" trial to continue")
                 .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
-        } else {
-            (
-                Text("FREE")
-                    .foregroundStyle(PaywallTheme.accent)
-                    .bold()
-                + Text(" trial to continue")
-                    .foregroundStyle(PaywallTheme.primaryText(for: colorScheme))
-            )
-            .font(font)
-        }
+        )
+        .font(ForeverFont.header(size: PaywallStep3Metrics.headlineSize, relativeTo: .title))
     }
 }
 

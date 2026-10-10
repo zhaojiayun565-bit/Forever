@@ -352,8 +352,8 @@ struct IntroOnboardingMapStep: View {
                 )
             )
         }
-        .onChange(of: showAddMemory) { wasShowing, isShowing in
-            guard wasShowing, !isShowing, let coordinate = localMemory?.coordinate else { return }
+        .onChange(of: localMemory?.id) {
+            guard let coordinate = localMemory?.coordinate else { return }
             focusMap(on: coordinate)
         }
     }

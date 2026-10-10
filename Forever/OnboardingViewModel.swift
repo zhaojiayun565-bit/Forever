@@ -59,7 +59,8 @@ enum OnboardingFlowStorage {
 }
 
 /// First memory captured during onboarding, kept in memory for the celebration step.
-struct OnboardingMemoryPreview {
+struct OnboardingMemoryPreview: Identifiable {
+    let id = UUID()
     let image: UIImage
     let note: String
     let coordinate: CLLocationCoordinate2D

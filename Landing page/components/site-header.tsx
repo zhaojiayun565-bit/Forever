@@ -1,3 +1,4 @@
+import Image from "next/image"
 import Link from "next/link"
 import { BRAND_PINK, SITE_NAME } from "@/lib/constants"
 
@@ -12,9 +13,23 @@ export function SiteHeader() {
   return (
     <header className="py-5 md:py-7 px-5 sm:px-6 md:px-8" role="banner">
       <div className="max-w-5xl mx-auto flex items-center justify-between">
-        <Link href="/" aria-label={`${SITE_NAME} home`} className="text-2xl md:text-3xl font-semibold tracking-tight">
-          {SITE_NAME}
-          <span style={{ color: BRAND_PINK }}>.</span>
+        <Link
+          href="/"
+          aria-label={`${SITE_NAME} home`}
+          className="flex items-center gap-2.5 text-2xl md:text-3xl font-semibold tracking-tight"
+        >
+          <Image
+            src="/app-icon.png"
+            alt=""
+            width={36}
+            height={36}
+            className="rounded-[9px] md:h-10 md:w-10"
+            priority
+          />
+          <span>
+            {SITE_NAME}
+            <span style={{ color: BRAND_PINK }}>.</span>
+          </span>
         </Link>
         <nav className="flex items-center gap-4 sm:gap-6" aria-label="Main navigation">
           {navLinks.map((link) => (

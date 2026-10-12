@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Full-page question answer flow with onboarding-style input and discard-on-back.
 struct QuestionAnswerView: View {
@@ -44,19 +45,29 @@ struct QuestionAnswerView: View {
     }
 
     var body: some View {
-        VStack(spacing: OnboardingLayout.bodyStackSpacing) {
-            Text(question.questionText)
-                .font(OnboardingLayout.titleFont)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, OnboardingLayout.horizontalPadding)
-                .padding(.top, 8)
+        ScrollView {
+            VStack(spacing: OnboardingLayout.bodyStackSpacing) {
+                Text(question.questionText)
+                    .font(ForeverFont.header(.title2))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, OnboardingLayout.horizontalPadding)
+                    .padding(.top, 8)
 
-            contentForState
-
-            Spacer(minLength: 0)
+                contentForState
+            }
+            .padding(.bottom, 24)
+            .frame(maxWidth: .infinity)
         }
+        .scrollDismissesKeyboard(.interactively)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(UIColor.systemGroupedBackground))
+        .background {
+            KeyboardDismissTap {
+                isFocused = false
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .navigationBarBackButtonHidden(revealState == .unanswered)
@@ -128,7 +139,7 @@ struct QuestionAnswerView: View {
                 )
                 .padding(.horizontal, OnboardingLayout.horizontalPadding)
                 .focused($isFocused)
-                .submitLabel(.done)
+                .submitLabel(.return)
 
             IntroPrimaryButton(
                 title: isSubmitting ? "Submitting..." : "Submit Answer",
@@ -228,5 +239,98 @@ struct QuestionAnswerView: View {
                 submitErrorMessage = "Daily category question limit reached."
             }
         }
+    }
+}
+
+/// Dismisses the keyboard when a tap lands outside a text field or button.
+private struct KeyboardDismissTap: UIViewRepresentable {
+    var onDismiss: () -> Void
+
+    func makeUIView(context: Context) -> KeyboardDismissInstallView {
+        let view = KeyboardDismissInstallView()
+        view.isUserInteractionEnabled = false
+        view.onWindowChange = { window in
+            context.coordinator.install(on: window)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: KeyboardDismissInstallView, context: Context) {
+        context.coordinator.onDismiss = onDismiss
+    }
+
+    static func dismantleUIView(_ uiView: KeyboardDismissInstallView, coordinator: Coordinator) {
+        uiView.onWindowChange = nil
+        coordinator.install(on: nil)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onDismiss: onDismiss)
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var onDismiss: () -> Void
+        private weak var window: UIWindow?
+        private var recognizer: UITapGestureRecognizer?
+
+        init(onDismiss: @escaping () -> Void) {
+            self.onDismiss = onDismiss
+        }
+
+        /// Installs one tap recognizer on the host window, or removes it when the window goes away.
+        func install(on window: UIWindow?) {
+            guard self.window !== window else { return }
+            if let recognizer, let window = self.window {
+                window.removeGestureRecognizer(recognizer)
+            }
+            recognizer = nil
+            self.window = window
+            guard let window else { return }
+
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+            tap.cancelsTouchesInView = false
+            tap.delegate = self
+            window.addGestureRecognizer(tap)
+            recognizer = tap
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldReceive touch: UITouch
+        ) -> Bool {
+            guard let view = touch.view else { return false }
+            return !keepsKeyboard(for: view)
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+
+        @objc private func handleTap() {
+            onDismiss()
+        }
+
+        private func keepsKeyboard(for view: UIView) -> Bool {
+            var current: UIView? = view
+            while let candidate = current {
+                if candidate is UITextField || candidate is UITextView || candidate is UIControl {
+                    return true
+                }
+                current = candidate.superview
+            }
+            return false
+        }
+    }
+}
+
+private final class KeyboardDismissInstallView: UIView {
+    var onWindowChange: ((UIWindow?) -> Void)?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        onWindowChange?(window)
     }
 }

@@ -26,8 +26,7 @@ struct AddMemoryView: View {
     @State private var showPhotoPicker = false
 
     var body: some View {
-        NavigationStack {
-            Form {
+        Form {
                 Section {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
@@ -108,17 +107,9 @@ struct AddMemoryView: View {
             }
             .navigationTitle("New Memory")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .tabBar)
+            .toolbar(.visible, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                            Text("Back")
-                        }
-                    }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task { await saveMemory() }
@@ -174,7 +165,6 @@ struct AddMemoryView: View {
                     locationName = name
                 }
             }
-        }
     }
 
     private func loadImages(from items: [PhotosPickerItem]) async {

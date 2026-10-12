@@ -12,6 +12,7 @@ type AlertType =
   | "question_reveal"
   | "wallpaper"
   | "streak_reminder"
+  | "memory_comment"
 
 type AlertPushEvent = { type: AlertType; title: string; body: string; route: string; questionId?: string }
 type LocationPushEvent = { type: "location" }
@@ -33,6 +34,13 @@ type CoupleAnswerRow = {
   partner_a_response?: string | null
   partner_b_id: string
   partner_b_response?: string | null
+}
+
+type MemoryCommentRow = {
+  id: string
+  memory_id: string
+  author_id: string
+  body: string
 }
 
 type ProfileRow = {
@@ -264,6 +272,35 @@ async function handleCouplesWebhook(record: CoupleRow, oldRecord: CoupleRow): Pr
   })
 }
 
+/** Pushes a new memory comment to the author's partner, naming the author the way the partner sees them. */
+async function handleMemoryCommentsWebhook(record: MemoryCommentRow): Promise<Response> {
+  const { data: memory, error: memoryError } = await supabase
+    .from("memories").select("couple_id").eq("id", record.memory_id).single()
+  if (memoryError || !memory?.couple_id) return new Response("Memory not shared, ignoring.", { status: 200 })
+
+  const { data: couple, error: coupleError } = await supabase
+    .from("couples").select("user1_id, user2_id").eq("id", memory.couple_id).single()
+  if (coupleError || !couple) throw new Error("Couple not found")
+
+  const recipientId = couple.user1_id === record.author_id ? couple.user2_id : couple.user1_id
+  if (!recipientId || recipientId === record.author_id) return new Response("No partner, ignoring.", { status: 200 })
+
+  const [{ data: actor }, { data: recipient }] = await Promise.all([
+    supabase.from("profiles").select("display_name").eq("id", record.author_id).single(),
+    supabase.from("profiles").select("partner_nickname").eq("id", recipientId).single(),
+  ])
+  const senderName = (recipient?.partner_nickname?.trim() || actor?.display_name?.trim() || "Your partner")
+  const text = record.body.trim()
+  const preview = text.length > 180 ? `${text.slice(0, 179)}…` : text
+
+  return await sendAlertToRecipient(recipientId, {
+    type: "memory_comment",
+    title: `${senderName} commented on a memory`,
+    body: preview,
+    route: "memory",
+  }, { memory_id: record.memory_id })
+}
+
 async function handleDirectPush(payload: DirectPushPayload): Promise<Response> {
   return await sendAlertToRecipient(payload.recipient_id, {
     type: payload.type,
@@ -298,6 +335,7 @@ serve(async (req) => {
     if (table === "profiles") return await handleProfilesWebhook(payload.record as ProfileRow, payload.old_record ?? {})
     if (table === "couple_answers") return await handleCoupleAnswersWebhook(payload.record as CoupleAnswerRow)
     if (table === "couples") return await handleCouplesWebhook(payload.record as CoupleRow, (payload.old_record ?? {}) as CoupleRow)
+    if (table === "memory_comments") return await handleMemoryCommentsWebhook(payload.record as MemoryCommentRow)
 
     if (payload.record?.id) {
       return await handleProfilesWebhook(payload.record as ProfileRow, payload.old_record ?? {})

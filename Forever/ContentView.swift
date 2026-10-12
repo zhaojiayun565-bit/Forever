@@ -37,6 +37,7 @@ struct ContentView: View {
             await state.initializeApp()
             await registerForPushIfAuthorized()
             updateLocationPrompt()
+            consumeMemoryDeepLink()
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
@@ -44,6 +45,7 @@ struct ContentView: View {
         }
         .onChange(of: state.currentCouple?.id) { _, _ in
             updateLocationPrompt()
+            consumeMemoryDeepLink()
         }
         .onChange(of: ambientData.authorizationStatus) { _, _ in
             guard ambientData.isLocationAuthorized else { return }
@@ -75,6 +77,9 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .openQuestions)) { _ in
             selectedTab = .questions
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openMemory)) { _ in
+            consumeMemoryDeepLink()
         }
         .onOpenURL { url in
             if url.host == "drawingboard", state.currentCouple != nil {
@@ -132,6 +137,14 @@ struct ContentView: View {
     /// Re-registers for remote notifications on launch when the user granted full or provisional permission.
     private func registerForPushIfAuthorized() async {
         await NotificationAuthorizationManager.registerForRemoteIfEligible()
+    }
+
+    /// Opens the map tab and the memory from a comment notification, once pairing is in place.
+    private func consumeMemoryDeepLink() {
+        guard let pending = MemoryDeepLink.pending, state.currentCouple != nil else { return }
+        MemoryDeepLink.pending = nil
+        selectedTab = .map
+        state.pendingMemoryOpen = pending
     }
 }
 

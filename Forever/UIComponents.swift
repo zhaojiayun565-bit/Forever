@@ -261,7 +261,7 @@ struct MemoryPageIndicator: View {
         HStack(spacing: 8) {
             ForEach(0 ..< count, id: \.self) { index in
                 Circle()
-                    .fill(index == selection ? Color.white : Color.white.opacity(0.35))
+                    .fill(index == selection ? Color.primary : Color.primary.opacity(0.28))
                     .frame(width: 7, height: 7)
                     .animation(.easeInOut(duration: 0.2), value: selection)
             }

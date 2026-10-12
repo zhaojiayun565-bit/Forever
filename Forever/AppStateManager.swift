@@ -14,6 +14,12 @@ struct NewlyAddedMemoryCoordinate: Equatable {
     let longitude: Double
 }
 
+/// Deep link from a memory-comment push: open this memory, optionally straight to comments.
+struct PendingMemoryOpen: Equatable, Sendable {
+    let memoryId: UUID
+    var showComments: Bool = true
+}
+
 /// First memory captured during onboarding; uploaded after Apple Sign-In.
 struct PendingOnboardingMemory: Codable, Equatable {
     let imageFileName: String
@@ -37,6 +43,8 @@ final class AppStateManager {
     var memories: [CoupleMemory] = []
     /// Set after saving a memory so the map can animate to it; cleared by the map after handling.
     var newlyAddedLocation: NewlyAddedMemoryCoordinate?
+    /// Consumed by the map tab after a comment notification is tapped.
+    var pendingMemoryOpen: PendingMemoryOpen?
     var isLoading = true
     let realtime: RealtimeListenerRegistry
 

@@ -11,6 +11,13 @@ extension Notification.Name {
     static let openHome = Notification.Name("openHome")
     /// Posted when a push should route to the Questions tab.
     static let openQuestions = Notification.Name("openQuestions")
+    /// Posted when a push should open a map memory, optionally its comments.
+    static let openMemory = Notification.Name("openMemory")
+}
+
+/// Holds a memory deep link until `ContentView` is ready to consume it (cold launch).
+enum MemoryDeepLink {
+    static var pending: PendingMemoryOpen?
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -64,11 +71,24 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 NotificationCenter.default.post(name: .openHome, object: nil)
             case "questions":
                 NotificationCenter.default.post(name: .openQuestions, object: nil)
+            case "memory":
+                Self.postOpenMemory(from: userInfo)
             default:
                 break
             }
         }
         completionHandler()
+    }
+
+    /// Stashes and posts a map-memory deep link from a comment push.
+    private static func postOpenMemory(from userInfo: [AnyHashable: Any]) {
+        let raw = userInfo["memory_id"]
+        let id = (raw as? String).flatMap(UUID.init(uuidString:))
+            ?? (raw as? UUID)
+        guard let id else { return }
+        let pending = PendingMemoryOpen(memoryId: id, showComments: userInfo["type"] as? String == "memory_comment")
+        MemoryDeepLink.pending = pending
+        NotificationCenter.default.post(name: .openMemory, object: nil, userInfo: ["memory_id": id.uuidString])
     }
 
     /// Writes push payload fields into the App Group and reloads only the widgets they affect.

@@ -335,10 +335,22 @@ struct IntroOnboardingMapStep: View {
         }
         .padding(.horizontal, OnboardingLayout.horizontalPadding)
         .sheet(isPresented: $showAddMemory) {
-            AddMemoryView(
-                onboardingSaveAction: onMemoryStaged,
-                initialCoordinate: mapCenterCoordinate
-            )
+            NavigationStack {
+                AddMemoryView(
+                    onboardingSaveAction: onMemoryStaged,
+                    initialCoordinate: mapCenterCoordinate
+                )
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            showAddMemory = false
+                        } label: {
+                            Image(systemName: "chevron.backward")
+                        }
+                        .accessibilityLabel("Back")
+                    }
+                }
+            }
             .environment(state)
         }
         .task {

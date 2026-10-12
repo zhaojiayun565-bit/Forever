@@ -6,6 +6,7 @@ struct MapDashboardView: View {
     @Environment(AppStateManager.self) private var state
     @State private var showingAddMemory = false
     @State private var selectedMemory: CoupleMemory?
+    @State private var openCommentsOnAppear = false
     @State private var position: MapCameraPosition = .automatic
 
     var body: some View {
@@ -17,6 +18,7 @@ struct MapDashboardView: View {
                             MemoryMapPinLabel(imageURL: memory.imageUrls.first, note: memory.note)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
+                                    openCommentsOnAppear = false
                                     selectedMemory = memory
                                 }
                         }
@@ -46,20 +48,37 @@ struct MapDashboardView: View {
                 .padding(.trailing, 24)
                 .padding(.bottom, 24)
             }
+            .toolbar(.hidden, for: .navigationBar)
             .task {
                 await state.loadMemories()
+                openPendingMemoryIfNeeded()
             }
             .refreshable {
                 await state.loadMemories()
             }
-            .fullScreenCover(isPresented: $showingAddMemory) {
+            .navigationDestination(isPresented: $showingAddMemory) {
                 AddMemoryView()
                     .environment(state)
             }
-            .fullScreenCover(item: $selectedMemory) { memory in
-                MemoryDetailView(memory: memory)
+            .navigationDestination(item: $selectedMemory) { memory in
+                MemoryDetailView(memory: memory, initiallyShowComments: openCommentsOnAppear)
                     .environment(state)
             }
+            .onChange(of: state.pendingMemoryOpen) { _, _ in
+                openPendingMemoryIfNeeded()
+            }
+            .onChange(of: state.memories.map(\.id)) { _, _ in
+                openPendingMemoryIfNeeded()
+            }
         }
+    }
+
+    /// Opens a memory from a comment notification once the map has that pin.
+    private func openPendingMemoryIfNeeded() {
+        guard let pending = state.pendingMemoryOpen else { return }
+        guard let memory = state.memories.first(where: { $0.id == pending.memoryId }) else { return }
+        openCommentsOnAppear = pending.showComments
+        selectedMemory = memory
+        state.pendingMemoryOpen = nil
     }
 }

@@ -5,6 +5,7 @@ nonisolated enum DB {
     static let profiles = "profiles"
     static let couples = "couples"
     static let memories = "memories"
+    static let memoryComments = "memory_comments"
     static let notesBucket = "notes"
     static let drawingStrokes = "drawing_strokes"
     static let drawingArchive = "drawing_archive"

@@ -131,6 +131,23 @@ nonisolated struct CoupleMemory: Identifiable, Equatable, Hashable {
     }
 }
 
+/// Row in `memory_comments`; only shared (paired) memories have comments.
+nonisolated struct MemoryComment: Codable, Identifiable, Hashable, Sendable {
+    let id: UUID
+    let memoryId: UUID
+    let authorId: UUID
+    let body: String
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case memoryId = "memory_id"
+        case authorId = "author_id"
+        case body
+        case createdAt = "created_at"
+    }
+}
+
 // MARK: - Questions
 
 /// Row in `question_categories`.

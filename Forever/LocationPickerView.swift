@@ -10,7 +10,7 @@ struct LocationPickerView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchService = LocationSearchService()
-    @State private var position: MapCameraPosition = .automatic
+    @State private var position: MapCameraPosition
     @State private var currentCenter: CLLocationCoordinate2D?
     @FocusState private var isSearchFocused: Bool
 
@@ -18,23 +18,33 @@ struct LocationPickerView: View {
     @State private var explicitPlaceName: String? = nil
     @State private var explicitPlaceCoordinate: CLLocationCoordinate2D? = nil
 
+    init(
+        selectedCoordinate: Binding<CLLocationCoordinate2D?>,
+        locationName: Binding<String?>,
+        onManualConfirm: (() -> Void)? = nil
+    ) {
+        _selectedCoordinate = selectedCoordinate
+        _locationName = locationName
+        self.onManualConfirm = onManualConfirm
+        let start = selectedCoordinate.wrappedValue ?? CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090)
+        _currentCenter = State(initialValue: start)
+        _position = State(
+            initialValue: .region(
+                MKCoordinateRegion(center: start, latitudinalMeters: 8_000, longitudinalMeters: 8_000)
+            )
+        )
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
-            Map(position: $position) { }
-                .onMapCameraChange { context in
+            Map(position: $position) {}
+                .mapStyle(.standard)
+                .onMapCameraChange(frequency: .onEnd) { context in
                     currentCenter = context.region.center
                     searchService.updateRegion(context.region)
-
-                    // If they drag away from searched POI, stop forcing its name.
-                    if let center = currentCenter, let searchedCoord = explicitPlaceCoordinate {
-                        let centerLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
-                        let searchedLoc = CLLocation(latitude: searchedCoord.latitude, longitude: searchedCoord.longitude)
-                        if centerLoc.distance(from: searchedLoc) > 150 {
-                            explicitPlaceName = nil
-                        }
-                    }
+                    unstickPOINameIfNeeded(center: context.region.center)
                 }
-                .ignoresSafeArea()
+                .ignoresSafeArea(edges: .bottom)
                 .onTapGesture {
                     isSearchFocused = false
                 }
@@ -74,6 +84,24 @@ struct LocationPickerView: View {
         }
         .navigationTitle("Choose Location")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            guard selectedCoordinate == nil else { return }
+            let center = await AmbientDataManager.shared.mapCenterCoordinate()
+            currentCenter = center
+            position = .region(
+                MKCoordinateRegion(center: center, latitudinalMeters: 8_000, longitudinalMeters: 8_000)
+            )
+        }
+    }
+
+    private func unstickPOINameIfNeeded(center: CLLocationCoordinate2D) {
+        guard let searchedCoord = explicitPlaceCoordinate else { return }
+        let centerLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+        let searchedLoc = CLLocation(latitude: searchedCoord.latitude, longitude: searchedCoord.longitude)
+        if centerLoc.distance(from: searchedLoc) > 150 {
+            explicitPlaceName = nil
+            explicitPlaceCoordinate = nil
+        }
     }
 
     private func selectCompletion(_ completion: MKLocalSearchCompletion) {
@@ -86,6 +114,7 @@ struct LocationPickerView: View {
                 let coordinate = GeocodingHelper.coordinate(for: item)
                 explicitPlaceName = completion.title
                 explicitPlaceCoordinate = coordinate
+                currentCenter = coordinate
                 position = .region(
                     MKCoordinateRegion(
                         center: coordinate,

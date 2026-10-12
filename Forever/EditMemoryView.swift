@@ -1,113 +1,72 @@
 import SwiftUI
 import PhotosUI
 import MapKit
-import Kingfisher
 import UIKit
 
 struct EditMemoryView: View {
     let memory: CoupleMemory
     let onSaveComplete: () -> Void
-    
+
     @Environment(AppStateManager.self) private var state
     @Environment(\.dismiss) private var dismiss
-    
-    @State private var existingUrls: [URL]
-    @State private var newSelectedItems: [PhotosPickerItem] = []
-    @State private var newSelectedImages: [UIImage] = []
-    
+
+    @State private var photos: [MemoryPhotoDraft]
+
     @State private var date: Date
     @State private var showingCalendarSheet = false
+    @State private var showingLocationPicker = false
     @State private var coordinate: CLLocationCoordinate2D?
     @State private var locationName: String?
     @State private var note: String
-    
+
     @State private var isSaving = false
     @State private var errorMessage: String?
-    
+
     init(memory: CoupleMemory, onSaveComplete: @escaping () -> Void) {
         self.memory = memory
         self.onSaveComplete = onSaveComplete
-        _existingUrls = State(initialValue: memory.imageUrls)
+        _photos = State(initialValue: memory.imageUrls.map { MemoryPhotoDraft(url: $0) })
         _date = State(initialValue: memory.createdAt)
         _coordinate = State(initialValue: memory.coordinate)
         _note = State(initialValue: memory.note ?? "")
     }
-    
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            PhotosPicker(selection: $newSelectedItems, maxSelectionCount: 10, matching: .images) {
-                                VStack {
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 24, weight: .bold))
-                                }
-                                .frame(width: 100, height: 100)
-                                .foregroundStyle(.pink)
-                                .background(Color.pink.opacity(0.1))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                            .onChange(of: newSelectedItems) { _, items in
-                                Task { await loadImages(from: items) }
-                            }
-                            
-                            ForEach(Array(newSelectedImages.enumerated()), id: \.offset) { _, img in
-                                Image(uiImage: img)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 100, height: 100)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                            
-                            ForEach(existingUrls, id: \.self) { url in
-                                ZStack(alignment: .topLeading) {
-                                    KFImage.url(url)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 100, height: 100)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    EditModeRemoveBadge {
-                                        existingUrls.removeAll { $0 == url }
-                                    }
-                                    .offset(x: -6, y: -6)
-                                }
-                            }
-                        }
-                        .padding(.top, 10)
-                        .padding(.bottom, 8)
-                        .padding(.leading, 6)
-                    }
-                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 0))
-                    .listRowBackground(Color.clear)
+                    MemoryPhotoStrip(photos: $photos)
                 }
-                
+
                 Section {
-                    HStack {
-                        Text("Date")
-                        Spacer()
-                        Text(date.formatted(date: .abbreviated, time: .omitted))
-                            .foregroundStyle(.secondary)
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture { showingCalendarSheet = true }
-                    
-                    NavigationLink {
-                        LocationPickerView(selectedCoordinate: $coordinate, locationName: $locationName)
-                    } label: {
                         HStack {
-                            Text("Location")
+                            Text("Date")
                             Spacer()
-                            Text(locationName ?? "Edit")
+                            Text(date.formatted(date: .abbreviated, time: .omitted))
                                 .foregroundStyle(.secondary)
-                                .lineLimit(1)
                         }
+                        .contentShape(Rectangle())
+                        .onTapGesture { showingCalendarSheet = true }
+
+                        Button {
+                            showingLocationPicker = true
+                        } label: {
+                            HStack {
+                                Text("Location")
+                                Spacer()
+                                Text(locationName ?? "Edit")
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.right")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .foregroundStyle(.primary)
+
+                        TextField("Write a note...", text: $note, axis: .vertical)
+                            .lineLimit(4 ... 8)
                     }
-                    
-                    TextField("Write a note...", text: $note, axis: .vertical)
-                        .lineLimit(4 ... 8)
-                }
             }
             .navigationTitle("Edit Memory")
             .navigationBarTitleDisplayMode(.inline)
@@ -118,7 +77,7 @@ struct EditMemoryView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { Task { await saveEdits() } }
                         .font(ForeverFont.cta(.body))
-                        .disabled((existingUrls.isEmpty && newSelectedImages.isEmpty) || coordinate == nil || isSaving)
+                        .disabled(photos.isEmpty || coordinate == nil || isSaving)
                 }
             }
             .onAppear { fetchLocationName() }
@@ -159,20 +118,19 @@ struct EditMemoryView: View {
                 }
                 .presentationDetents([.medium])
             }
-        }
-    }
-    
-    private func loadImages(from items: [PhotosPickerItem]) async {
-        var loaded: [UIImage] = []
-        for item in items {
-            if let data = try? await item.loadTransferable(type: Data.self),
-               let uiImage = UIImage(data: data) {
-                loaded.append(uiImage)
+            .sheet(isPresented: $showingLocationPicker) {
+                NavigationStack {
+                    LocationPickerView(selectedCoordinate: $coordinate, locationName: $locationName)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cancel") { showingLocationPicker = false }
+                            }
+                        }
+                }
             }
         }
-        newSelectedImages = loaded
     }
-    
+
     private func fetchLocationName() {
         guard locationName == nil, let coord = coordinate else { return }
         Task {
@@ -181,7 +139,7 @@ struct EditMemoryView: View {
             }
         }
     }
-    
+
     private func saveEdits() async {
         guard let creatorId = state.currentUser?.id else {
             errorMessage = "Authentication error."
@@ -191,32 +149,38 @@ struct EditMemoryView: View {
             errorMessage = "Please select a valid location."
             return
         }
-              
+
         isSaving = true
         defer { isSaving = false }
-        
+
         do {
-            var finalUrls = existingUrls
             let coupleIdForMemory = state.currentCouple?.id
-            if !newSelectedImages.isEmpty {
-                let uploadedUrls = try await withThrowingTaskGroup(of: URL.self) { group in
-                    for image in newSelectedImages {
-                        group.addTask {
-                            let data = try await ImageEncoding.jpeg(image, quality: 0.7)
-                            return try await SupabaseManager.shared.uploadMemoryImage(
-                                data: data,
-                                coupleId: coupleIdForMemory,
-                                creatorId: creatorId
-                            )
-                        }
+            let uploadedByID = try await withThrowingTaskGroup(of: (UUID, URL).self) { group in
+                for photo in photos {
+                    guard let image = photo.image else { continue }
+                    group.addTask {
+                        let data = try await ImageEncoding.jpeg(image, quality: 0.7)
+                        let url = try await SupabaseManager.shared.uploadMemoryImage(
+                            data: data,
+                            coupleId: coupleIdForMemory,
+                            creatorId: creatorId
+                        )
+                        return (photo.id, url)
                     }
-                    var urls: [URL] = []
-                    for try await url in group { urls.append(url) }
-                    return urls
                 }
-                finalUrls.append(contentsOf: uploadedUrls)
+                var urls: [UUID: URL] = [:]
+                for try await (id, url) in group { urls[id] = url }
+                return urls
             }
-            
+
+            let finalUrls: [URL] = photos.compactMap { photo in
+                photo.url ?? uploadedByID[photo.id]
+            }
+            guard !finalUrls.isEmpty else {
+                errorMessage = "Please keep at least one photo."
+                return
+            }
+
             try await SupabaseManager.shared.updateMemory(
                 id: memory.id,
                 imageUrls: finalUrls,

@@ -11,10 +11,10 @@ struct AddMemoryView: View {
     var onboardingSaveAction: ((UIImage, String, CLLocationCoordinate2D) -> Void)?
     var initialCoordinate: CLLocationCoordinate2D?
 
-    @State private var selectedItems: [PhotosPickerItem] = []
-    @State private var selectedImages: [UIImage] = []
+    @State private var photos: [MemoryPhotoDraft] = []
     @State private var date = Date()
     @State private var showingCalendarSheet = false
+    @State private var showingLocationPicker = false
     @State private var coordinate: CLLocationCoordinate2D?
     @State private var locationName: String?
     @State private var note = ""
@@ -23,57 +23,20 @@ struct AddMemoryView: View {
     @State private var errorMessage: String?
     @State private var didManuallyPickLocation = false
     @State private var didManuallyPickDate = false
-    @State private var showPhotoPicker = false
+
+    private var selectedImages: [UIImage] {
+        photos.compactMap(\.image)
+    }
 
     var body: some View {
         Form {
-                Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            Button {
-                                Task {
-                                    await PhotoLibraryAuthorizationManager.requestIfNeeded()
-                                    showPhotoPicker = true
-                                }
-                            } label: {
-                                VStack {
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 24, weight: .bold))
-                                }
-                                .frame(width: 100, height: 100)
-                                .foregroundStyle(.pink)
-                                .background(Color.pink.opacity(0.1))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                            .photosPicker(
-                                isPresented: $showPhotoPicker,
-                                selection: $selectedItems,
-                                maxSelectionCount: 10,
-                                matching: .images,
-                                photoLibrary: .shared()
-                            )
-                            .onChange(of: selectedItems) { _, items in
-                                Task {
-                                    await loadImages(from: items)
-                                    await applyPhotoMetadata(from: items)
-                                }
-                            }
-
-                            ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, img in
-                                Image(uiImage: img)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 100, height: 100)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                        }
-                        .padding(.vertical, 8)
-                    }
-                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 0))
-                    .listRowBackground(Color.clear)
+            Section {
+                MemoryPhotoStrip(photos: $photos) { items in
+                    await applyPhotoMetadata(from: items)
                 }
+            }
 
-                Section {
+            Section {
                     HStack {
                         Text("Date")
                         Spacer()
@@ -85,12 +48,8 @@ struct AddMemoryView: View {
                         showingCalendarSheet = true
                     }
 
-                    NavigationLink {
-                        LocationPickerView(
-                            selectedCoordinate: $coordinate,
-                            locationName: $locationName,
-                            onManualConfirm: { didManuallyPickLocation = true }
-                        )
+                    Button {
+                        showingLocationPicker = true
                     } label: {
                         HStack {
                             Text("Location")
@@ -98,83 +57,91 @@ struct AddMemoryView: View {
                             Text(locationName ?? "Choose")
                                 .foregroundStyle(locationName != nil ? Color.secondary : Color.pink)
                                 .lineLimit(1)
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
                         }
                     }
+                    .foregroundStyle(.primary)
 
                     TextField("Write a note...", text: $note, axis: .vertical)
                         .lineLimit(4 ... 8)
                 }
-            }
-            .navigationTitle("New Memory")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.hidden, for: .tabBar)
-            .toolbar(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await saveMemory() }
-                    }
-                    .font(ForeverFont.cta(.body))
-                    .disabled(selectedImages.isEmpty || coordinate == nil || isSaving)
+        }
+        .navigationTitle("New Memory")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") {
+                    Task { await saveMemory() }
                 }
-            }
-            .overlay {
-                if isSaving {
-                    ZStack {
-                        Color.black.opacity(0.4).ignoresSafeArea()
-                        ProgressView("Saving...")
-                            .padding()
-                            .background(Color(uiColor: .systemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                }
-            }
-            .alert(
-                "Save Failed",
-                isPresented: Binding(
-                    get: { errorMessage != nil },
-                    set: { if !$0 { errorMessage = nil } }
-                )
-            ) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(errorMessage ?? "An unknown error occurred.")
-            }
-            .sheet(isPresented: $showingCalendarSheet) {
-                NavigationStack {
-                    DatePicker("Select Date", selection: $date, displayedComponents: .date)
-                        .datePickerStyle(.graphical)
-                        .padding()
-                        .navigationTitle("Choose Date")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") {
-                                    didManuallyPickDate = true
-                                    showingCalendarSheet = false
-                                }
-                            }
-                        }
-                }
-                .presentationDetents([.medium])
-            }
-            .task {
-                guard let initialCoordinate, coordinate == nil else { return }
-                coordinate = initialCoordinate
-                if let name = await GeocodingHelper.placeName(for: initialCoordinate) {
-                    locationName = name
-                }
-            }
-    }
-
-    private func loadImages(from items: [PhotosPickerItem]) async {
-        var loaded: [UIImage] = []
-        for item in items {
-            if let data = try? await item.loadTransferable(type: Data.self), let uiImage = UIImage(data: data) {
-                loaded.append(uiImage)
+                .font(ForeverFont.cta(.body))
+                .disabled(selectedImages.isEmpty || coordinate == nil || isSaving)
             }
         }
-        selectedImages = loaded
+        .overlay {
+            if isSaving {
+                ZStack {
+                    Color.black.opacity(0.4).ignoresSafeArea()
+                    ProgressView("Saving...")
+                        .padding()
+                        .background(Color(uiColor: .systemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+            }
+        }
+        .alert(
+            "Save Failed",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "An unknown error occurred.")
+        }
+        .sheet(isPresented: $showingCalendarSheet) {
+            NavigationStack {
+                DatePicker("Select Date", selection: $date, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .padding()
+                    .navigationTitle("Choose Date")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") {
+                                didManuallyPickDate = true
+                                showingCalendarSheet = false
+                            }
+                        }
+                    }
+            }
+            .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showingLocationPicker) {
+            NavigationStack {
+                LocationPickerView(
+                    selectedCoordinate: $coordinate,
+                    locationName: $locationName,
+                    onManualConfirm: { didManuallyPickLocation = true }
+                )
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showingLocationPicker = false }
+                    }
+                }
+            }
+        }
+        .task {
+            guard let initialCoordinate, coordinate == nil else { return }
+            coordinate = initialCoordinate
+            if let name = await GeocodingHelper.placeName(for: initialCoordinate) {
+                locationName = name
+            }
+        }
     }
 
     /// Applies GPS and capture date from the first selected photo with PHAsset metadata.

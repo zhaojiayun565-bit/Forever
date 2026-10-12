@@ -188,9 +188,8 @@ struct DaysTogetherHeroCard: View {
     @Environment(AppStateManager.self) private var state
     
     var daysTogether: Int {
-        guard let date = state.currentUser?.anniversaryDate else { return 0 }
-        let days = Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
-        return max(0, days)
+        guard let date = state.currentUser?.anniversaryDay else { return 0 }
+        return AnniversaryCalendar.daysTogether(since: date)
     }
     
     var body: some View {

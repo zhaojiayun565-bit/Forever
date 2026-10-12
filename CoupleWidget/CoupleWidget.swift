@@ -17,7 +17,7 @@ struct Provider: TimelineProvider {
 
     private static func anniversaryDate(from defaults: UserDefaults?) -> Date? {
         guard let timestamp = defaults?.object(forKey: WidgetDefaultsKey.anniversaryDate) as? Double else { return nil }
-        return Date(timeIntervalSince1970: timestamp)
+        return AnniversaryCalendar.localDate(fromStored: Date(timeIntervalSince1970: timestamp))
     }
 
     func placeholder(in context: Context) -> SimpleEntry {
@@ -380,10 +380,7 @@ struct DaysTogetherWidgetView: View {
 
     private var daysTogether: Int? {
         guard let anniversary = entry.anniversaryDate else { return nil }
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: anniversary)
-        let end = calendar.startOfDay(for: Date())
-        return max(calendar.dateComponents([.day], from: start, to: end).day ?? 0, 0)
+        return AnniversaryCalendar.daysTogether(since: anniversary, now: entry.date)
     }
 
     private var dayText: String {

@@ -27,6 +27,8 @@ struct SettingsView: View {
     @State private var displayName = ""
     @State private var partnerNickname = ""
     @State private var anniversary = Date()
+    /// Anniversary last loaded from the profile, so a partner update is not saved back as a local edit.
+    @State private var displayedAnniversary = Date()
     @State private var isSaving = false
     @State private var isShowingUnpairAlert = false
     @AppStorage("distanceUnit") private var distanceUnit = DistanceUnitOption.miles.rawValue
@@ -321,6 +323,10 @@ struct SettingsView: View {
                 guard !hasUnsavedCoupleDetails else { return }
                 syncCoupleDetailsFromProfile()
             }
+            .onChange(of: state.currentUser?.anniversaryDate) { _, _ in
+                guard !anniversaryWasEdited else { return }
+                applyAnniversaryFromProfile()
+            }
             .onChange(of: distanceUnit) { _, _ in
                 if distanceUnit != normalizedDistanceUnit {
                     distanceUnit = normalizedDistanceUnit
@@ -377,9 +383,19 @@ struct SettingsView: View {
             displayName = name
         }
         partnerNickname = state.currentUser?.partnerNickname ?? ""
-        if let date = state.currentUser?.anniversaryDate {
-            anniversary = date
-        }
+        applyAnniversaryFromProfile()
+    }
+
+    /// Shows the shared anniversary day and remembers it as the unmodified value.
+    private func applyAnniversaryFromProfile() {
+        guard let date = state.currentUser?.anniversaryDay else { return }
+        anniversary = date
+        displayedAnniversary = date
+    }
+
+    /// Whether the date picker differs from the anniversary loaded from the profile.
+    private var anniversaryWasEdited: Bool {
+        !Calendar.current.isDate(displayedAnniversary, inSameDayAs: anniversary)
     }
 
     /// Whether the couple details fields differ from what is stored on the profile.
@@ -400,7 +416,7 @@ struct SettingsView: View {
             return true
         }
 
-        guard let savedAnniversary = state.currentUser?.anniversaryDate else {
+        guard let savedAnniversary = state.currentUser?.anniversaryDay else {
             return true
         }
         return !Calendar.current.isDate(savedAnniversary, inSameDayAs: anniversary)
@@ -436,6 +452,7 @@ struct SettingsView: View {
             )
             displayName = trimmedName
             partnerNickname = trimmedPartnerNickname
+            displayedAnniversary = anniversary
         } catch {
             if !Task.isCancelled {
                 saveDetailsError = error.localizedDescription

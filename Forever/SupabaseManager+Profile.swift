@@ -175,7 +175,7 @@ extension SupabaseManager {
             .update(UpdateDTO(
                 display_name: name,
                 partner_nickname: nicknameToSave,
-                anniversary_date: anniversary
+                anniversary_date: AnniversaryCalendar.storageDate(from: anniversary)
             ))
             .eq("id", value: session.user.id)
             .select()

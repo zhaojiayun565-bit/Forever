@@ -79,10 +79,7 @@ struct DaysTogetherWidgetPreviewCard: View {
     let anniversary: Date
 
     private var daysTogether: Int {
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: anniversary)
-        let end = calendar.startOfDay(for: Date())
-        return max(calendar.dateComponents([.day], from: start, to: end).day ?? 0, 0)
+        AnniversaryCalendar.daysTogether(since: anniversary)
     }
 
     var body: some View {

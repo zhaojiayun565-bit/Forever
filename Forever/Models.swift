@@ -15,6 +15,7 @@ nonisolated struct Profile: Codable, Identifiable, Hashable {
     var partnerNickname: String?
     var avatarUrl: String?
     var latestMessage: String?
+    /// Stored as noon UTC of the shared calendar day. Use `anniversaryDay` for display.
     var anniversaryDate: Date?
     var deviceToken: String?
     var isPremium: Bool?
@@ -42,6 +43,11 @@ nonisolated struct Profile: Codable, Identifiable, Hashable {
         case timezone
         case locationUpdatedAt = "location_updated_at"
         case createdAt = "created_at"
+    }
+
+    /// Anniversary as a calendar day in the current time zone, shared with a partner elsewhere.
+    var anniversaryDay: Date? {
+        anniversaryDate.map { AnniversaryCalendar.localDate(fromStored: $0) }
     }
 
     /// Last reported location, when both coordinates are present.

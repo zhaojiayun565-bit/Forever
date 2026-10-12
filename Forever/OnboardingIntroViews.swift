@@ -182,7 +182,7 @@ struct IntroAnniversaryInsightView: View {
     let action: () -> Void
 
     private var daysTogether: Int {
-        max(0, Calendar.current.dateComponents([.day], from: anniversary, to: Date()).day ?? 0)
+        AnniversaryCalendar.daysTogether(since: anniversary)
     }
 
     private var displayMyName: String {
